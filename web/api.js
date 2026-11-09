@@ -43,7 +43,11 @@ export async function createApi() {
       return rows[0] || null;
     },
     async createHousehold(name) { return check(await sb.rpc('create_household', { p_name: name })); },
-    async joinHousehold(code) { return check(await sb.rpc('join_household', { p_code: code })); },
+    async joinHousehold(code) {
+      const h = check(await sb.rpc('join_household', { p_code: code }));
+      if (!h || !h.id) throw new Error('That code didn’t match a household. Check it and try again.');
+      return h;
+    },
     async updateHousehold(id, patch) { return check(await sb.from('households').update(patch).eq('id', id).select().single()); },
     async newInviteCode() { return check(await sb.rpc('new_household_invite_code')); },
     async newCalendarToken() { return check(await sb.rpc('new_calendar_token')); },

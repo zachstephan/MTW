@@ -135,7 +135,11 @@ export function itemKey(item) {
 
 export const AISLES = ['Produce', 'Meat & seafood', 'Dairy & eggs', 'Bakery', 'Pantry', 'Canned & jarred', 'Spices & oils', 'Frozen', 'Other'];
 const AISLE_WORDS = [
-  ['Canned & jarred', ['broth', 'stock', 'bouillon']],
+  // Specific phrases first, so "frozen peas" isn't produce and "peanut butter" isn't dairy.
+  ['Frozen', ['frozen']],
+  ['Canned & jarred', ['broth', 'stock', 'bouillon', 'crushed tomatoes', 'diced tomatoes', 'tomato sauce', 'tomato paste', 'green chiles', 'canned', 'sun-dried', 'marinara']],
+  ['Pantry', ['gnocchi', 'peanut butter', 'peanuts', 'breadcrumbs', 'panko']],
+  ['Produce', ['green bean']],
   ['Spices & oils', ['salt', 'pepper flakes', 'black pepper', 'cumin', 'paprika', 'oregano', 'chili powder', 'cinnamon', 'garlic powder', 'onion powder', 'thyme', 'basil leaves dried', 'bay leaf', 'bay leaves', 'curry powder', 'garam masala', 'turmeric', 'cayenne', 'nutmeg', 'italian seasoning', 'seasoning', 'olive oil', 'vegetable oil', 'canola oil', 'sesame oil', 'oil', 'vinegar', 'cooking spray', 'vanilla']],
   ['Meat & seafood', ['chicken', 'beef', 'pork', 'turkey', 'sausage', 'bacon', 'ham', 'steak', 'salmon', 'shrimp', 'fish', 'tuna steak', 'cod', 'tilapia', 'lamb', 'brisket', 'ribs', 'chorizo', 'andouille', 'meatball', 'prosciutto', 'salami', 'pepperoni']],
   ['Dairy & eggs', ['milk', 'cream', 'butter', 'cheese', 'cheddar', 'mozzarella', 'parmesan', 'feta', 'yogurt', 'sour cream', 'egg', 'half and half', 'ricotta', 'cottage', 'oaxaca', 'colby', 'monterey']],

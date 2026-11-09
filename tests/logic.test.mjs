@@ -48,6 +48,12 @@ test('aisle guesses', () => {
   assert.equal(guessAisle('long-grain rice'), 'Pantry');
   assert.equal(guessAisle('chicken broth'), 'Canned & jarred');
   assert.equal(guessAisle('green beans'), 'Produce');
+  assert.equal(guessAisle('frozen peas and carrots'), 'Frozen');
+  assert.equal(guessAisle('diced green chiles'), 'Canned & jarred');
+  assert.equal(guessAisle('potato gnocchi'), 'Pantry');
+  assert.equal(guessAisle('crushed tomatoes'), 'Canned & jarred');
+  assert.equal(guessAisle('peanut butter'), 'Pantry');
+  assert.equal(guessAisle('cherry tomatoes'), 'Produce');
   assert.equal(guessAisle('ground cumin'), 'Spices & oils');
 });
 
