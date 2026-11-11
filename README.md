@@ -27,7 +27,7 @@ Supabase project: `nrflpcnvbimunhmpxnsm` in the **Meal Tracker Week** organizati
 
 ## Starter recipes
 
-`web/starter-recipes.json` holds the shared starter set of everyday family dinners: 47 written for this app, plus 200 that link to the full recipe on [Taste of Home](https://www.tasteofhome.com). For those 200, the ingredient lists and short steps are written in our own words, and the link credits the source and gives the full recipe with photos. No text or photos are copied. Ingredient lists aren't copyrightable, but recipe writing and photos are, so keep to this pattern when adding more.
+`web/starter-recipes.json` holds the shared starter set: 257 everyday family dinners, each linking to the full recipe on [Taste of Home](https://www.tasteofhome.com). The ingredient lists and short steps are written in our own words, and the link credits the source and gives the full recipe with photos. No text or photos are copied. Ingredient lists aren't copyrightable, but recipe writing and photos are, so keep to this pattern when adding more.
 
 To add more, append to that file, push, then in the app open Settings › Starter recipes › **Check for new starter recipes** (only starter-library editors see it). Recipes already in the app, matched by name, are skipped. That button only adds recipes. To remove starter recipes, delete them in the app (Edit › Delete) or with SQL.
 
