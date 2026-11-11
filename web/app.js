@@ -68,6 +68,8 @@ function dayEntry(iso) {
 // Extra recipes: on a day (side, dessert, second dish) or for the week (to try, to bake, lunches).
 function dayExtras(day) { return (S.extras || []).filter((x) => x.day === day); }
 function weekExtras(ws) { return (S.extras || []).filter((x) => !x.day && x.week_start === ws); }
+// Rows added this session start with a temporary id until saved; the screen may still hold that id.
+function findExtra(id) { const real = (S.extraAlias && S.extraAlias[id]) || id; return (S.extras || []).find((x) => x.id === real || x.id === id); }
 function extraInfo(x) { const r = x.recipe_id ? byId(x.recipe_id) : null; return { r, name: r ? r.name : x.label }; }
 
 // ---------- boot ----------
@@ -234,7 +236,7 @@ function lockedDayTap(day) {
 function extraRows(list, removable) {
   return list.map((x) => { const { r, name } = extraInfo(x); return `<div class="alsorow">
     <button class="item" data-act="extra" data-x="${x.id}"><span><span class="name">${esc(name)}</span><span class="tags">${esc(r ? tagLine(r) || 'Tap to see the recipe' : 'Not in your recipes')}</span></span></button>
-    ${removable ? `<button class="xsmall" data-act="delextrarecipe" data-x="${x.id}" aria-label="Remove ${esc(name)}">${CLOSE}</button>` : ''}</div>`; }).join('');
+    ${removable ? `<button class="xsmall" data-act="delextrarecipe" data-x="${x.id}" data-d="${x.day || ''}" aria-label="Remove ${esc(name)}">${CLOSE}</button>` : ''}</div>`; }).join('');
 }
 
 // Locked week, a day with extras: show everything planned that day.
@@ -256,19 +258,25 @@ async function addExtra(day, r, label) {
   toast(`${temp.label} added to ${day ? dayName(day) : weekLabel(ws).toLowerCase()}`);
   try {
     const saved = await S.api.addPlanExtra(S.household.id, temp);
-    const at = S.extras.indexOf(temp); if (at > -1) S.extras[at] = saved;
+    (S.extraAlias || (S.extraAlias = {}))[temp.id] = saved.id;
+    const at = S.extras.indexOf(temp);
+    if (at > -1) S.extras[at] = saved;
+    else S.api.deletePlanExtras([saved.id]).catch(() => {}); // removed before the save finished
   } catch (e) {
     S.extras = S.extras.filter((x) => x !== temp); recalc(); render();
     toast(e.message || 'Couldn’t save. Check your connection.');
   }
 }
 
-async function removeExtras(ids) {
+async function removeExtras(ids, redrawDay) {
+  ids = ids.map((id) => (S.extraAlias && S.extraAlias[id]) || id);
   if (!ids.length) return;
   const gone = S.extras.filter((x) => ids.includes(x.id));
   S.extras = S.extras.filter((x) => !ids.includes(x.id)); recalc(); render();
+  if (redrawDay && document.getElementById('scrim')) dayMenu(redrawDay);
   try { await S.api.deletePlanExtras(ids.filter((id) => !String(id).startsWith('tmp'))); } catch (e) {
     S.extras.push(...gone); recalc(); render(); toast(e.message || 'Couldn’t save. Check your connection.');
+    if (redrawDay && document.getElementById('scrim')) dayMenu(redrawDay);
   }
 }
 
@@ -920,8 +928,8 @@ document.addEventListener('click', async (e) => {
     case 'adddayextra': chooser(day, 'extra'); break;
     case 'addweekextra': chooser(null, 'week'); break;
     case 'pickextra': { const r = byId(id); if (!r) return; closeSheet(); addExtra(day || null, r); break; }
-    case 'extra': { const x = (S.extras || []).find((y) => y.id === b.dataset.x); if (!x) return; const { r, name } = extraInfo(x); if (r) details(r.id); else toast(name); break; }
-    case 'delextrarecipe': removeExtras([b.dataset.x]); break;
+    case 'extra': { const x = findExtra(b.dataset.x); if (!x) { toast('That one was removed'); if (document.getElementById('scrim')) closeSheet(); render(); return; } const { r, name } = extraInfo(x); if (r) details(r.id); else toast(`${name} isn’t in your recipes anymore`); break; }
+    case 'delextrarecipe': { const x = findExtra(b.dataset.x); if (x) removeExtras([x.id], b.closest('.sheet') ? day : null); break; }
     case 'setoff': closeSheet(); changeDays([{ day, kind: b.dataset.kind, recipe_id: null, label: null, note: null }], day); break;
     case 'eatout': eatOutSheet(day); break;
     case 'seteatout': { const note = document.getElementById('where').value.trim(); closeSheet(); changeDays([{ day, kind: 'eating_out', recipe_id: null, label: null, note }], day); break; }
