@@ -70,12 +70,13 @@ export async function createApi() {
 
     // ---------- everything the screens need ----------
     async loadAll(hid) {
-      const [recipes, plan, rules, hidden, admin] = await Promise.all([
+      const [recipes, plan, rules, hidden, admin, locks] = await Promise.all([
         fetchAll(() => sb.from('recipes').select('*, recipe_ingredients(*)').order('name').order('id')),
         fetchAll(() => sb.from('plan_days').select('*').eq('household_id', hid).order('day')),
         sb.from('day_rules').select('*').eq('household_id', hid),
         sb.from('hidden_recipes').select('recipe_id').eq('household_id', hid),
         sb.from('app_admins').select('user_id'),
+        sb.from('week_locks').select('week_start').eq('household_id', hid),
       ]);
       return {
         recipes: recipes.map(normalizeRecipe),
@@ -83,7 +84,13 @@ export async function createApi() {
         rules: check(rules),
         hidden: check(hidden).map((r) => r.recipe_id),
         isAdmin: (admin.data || []).length > 0,
+        // Before the week_locks migration is applied this errors; treat it as "nothing locked".
+        locks: locks.error ? [] : locks.data.map((l) => l.week_start),
       };
+    },
+    async setWeekLock(hid, weekStart, locked) {
+      if (locked) check(await sb.from('week_locks').upsert({ household_id: hid, week_start: weekStart }));
+      else check(await sb.from('week_locks').delete().eq('household_id', hid).eq('week_start', weekStart));
     },
 
     // ---------- plan ----------

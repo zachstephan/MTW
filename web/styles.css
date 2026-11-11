@@ -229,3 +229,16 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Locked week */
+.lockbar { border-color: var(--leaf); background: #E3EEDD; }
+.lockbar .val { color: var(--leaf); }
+.lockbar .lbl { display: block; font-size: 13px; }
+.lockicon { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%; background: var(--surface); color: var(--leaf); display: grid; place-items: center; }
+.lockicon svg { width: 18px; height: 18px; }
+.day .go { width: 46px; height: 46px; display: grid; place-items: center; color: var(--muted); }
+.day .go svg { width: 20px; height: 20px; }
+.actions.one { grid-template-columns: 1fr; }
+.lockbtn { margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.lockbtn svg { width: 18px; height: 18px; }
+.lockhelp { color: var(--muted); font-size: 13px; text-align: center; margin: 8px 12px 0; }

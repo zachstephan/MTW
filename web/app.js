@@ -6,6 +6,7 @@ import { createApi } from './api.js';
 const DICE = '<svg viewBox="0 0 24 24" fill="none" stroke="#22301E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.3" fill="#22301E"/><circle cx="15" cy="15" r="1.3" fill="#22301E"/><circle cx="12" cy="12" r="1.3" fill="#22301E"/></svg>';
 const LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 const RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>';
+const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 const GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 const CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 const EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
@@ -104,6 +105,7 @@ async function loadData() {
   S.plan = new Map(d.plan.map((p) => [p.day, p]));
   S.rules = new Map(d.rules.map((r) => [r.weekday, r]));
   S.hidden = new Set(d.hidden);
+  S.locks = new Set(d.locks || []);
   S.isAdmin = d.isAdmin;
   recalc();
 }
@@ -197,30 +199,65 @@ function weekLabel(start) {
   return 'Week of ' + L.nice(start);
 }
 
+// A locked week is read-only: tapping a dinner opens its recipe, and nothing can change its days.
+function weekLocked(ws) { return !!S.locks && S.locks.has(ws); }
+function dayLocked(day) { return weekLocked(L.weekOf(day, startDay())); }
+
+async function setLock(ws, locked) {
+  if (locked) S.locks.add(ws); else S.locks.delete(ws);
+  render();
+  toast(locked ? 'Week locked. Tap a dinner to see its recipe.' : 'Week unlocked');
+  try { await S.api.setWeekLock(S.household.id, ws, locked); } catch (e) {
+    if (locked) S.locks.delete(ws); else S.locks.add(ws);
+    render(); toast(e.message || 'Couldn’t save. Check your connection.');
+  }
+}
+
+// Tapping a day in a locked week: show what's planned instead of the change menu.
+function lockedDayTap(day) {
+  const e = dayEntry(day);
+  if (e.recipe) return details(e.recipe.id);
+  if (L.isOffKind(e.kind)) return toast(L.OFF_KINDS[e.kind].label + (e.note ? `: ${e.note}` : ''));
+  if (e.kind) return toast(e.name || 'Dinner');
+  toast('Nothing planned. Unlock the week to choose a dinner.');
+}
+
 function renderWeek(swapped) {
   const days = weekDays(S.weekStart);
   const empty = days.filter((d) => !S.plan.has(d)).length;
   const cooking = days.filter((d) => !L.isOffKind((S.plan.get(d) || {}).kind)).length;
   const diceOn = L.activeCount(S.f.dice);
+  const locked = weekLocked(S.weekStart);
   let html = `<div class="top"><div><h1>${weekLabel(S.weekStart)}</h1><div class="sub">${L.nice(days[0])} to ${L.nice(days[6])}</div></div>
     <div class="weeknav"><button class="round" data-act="prev" aria-label="Previous week">${LEFT}</button><button class="round" data-act="next" aria-label="Next week">${RIGHT}</button><button class="round" data-act="settings" aria-label="Settings">${GEAR}</button></div></div>
-    <button class="pickfrom${diceOn ? ' on' : ''}" data-act="dicefilter"><span style="min-width:0"><span class="lbl">Dice picks from</span><span class="val">${esc(filterSummary(S.f.dice))}</span></span><span class="chev">${diceOn ? 'Change' : 'Filter'}</span></button>
-    <div class="days">`;
+    ${locked
+    ? `<button class="pickfrom lockbar" data-act="unlockweek"><span class="lockicon">${LOCK}</span><span style="min-width:0;flex:1"><span class="val">Week locked</span><span class="lbl">Tap a dinner to see the recipe</span></span><span class="chev">Unlock</span></button>`
+    : `<button class="pickfrom${diceOn ? ' on' : ''}" data-act="dicefilter"><span style="min-width:0"><span class="lbl">Dice picks from</span><span class="val">${esc(filterSummary(S.f.dice))}</span></span><span class="chev">${diceOn ? 'Change' : 'Filter'}</span></button>`}
+    <div class="days${locked ? ' locked' : ''}">`;
   for (const d of days) {
     const e = dayEntry(d), off = L.isOffKind(e.kind), rule = S.rules.get(L.dow(d));
     const cls = ['day', e.kind ? '' : 'empty', off ? 'off' : '', d === S.today ? 'today' : '', swapped === d ? 'swapped' : ''].filter(Boolean).join(' ');
     let body;
     if (off) body = `<span class="name">${L.OFF_KINDS[e.kind].label}</span><span class="tags">${esc(e.note || L.OFF_KINDS[e.kind].hint)}</span>`;
     else if (e.kind) body = `<span class="name">${esc(e.name || 'Dinner')}</span><span class="tags">${esc(tagLine(e.recipe))}</span>`;
-    else body = `<span class="hint">Tap to choose</span>${rule ? `<span class="rulehint">${esc(dayName(d))}s: ${esc(L.ruleSummary(rule))}</span>` : ''}`;
+    else body = `<span class="hint">${locked ? 'Nothing planned' : 'Tap to choose'}</span>${rule && !locked ? `<span class="rulehint">${esc(dayName(d))}s: ${esc(L.ruleSummary(rule))}</span>` : ''}`;
     html += `<div class="${cls}"><div class="date"><span class="dow">${dayName(d).slice(0, 3)}</span><span class="num">${Number(d.slice(8))}</span></div>
       <button class="what" data-act="day" data-d="${d}">${body}</button>
-      <button class="dice" data-act="roll" data-d="${d}" aria-label="Pick a random dinner for ${dayName(d)}">${DICE}</button></div>`;
+      ${locked
+    ? (e.recipe ? `<span class="go" aria-hidden="true">${RIGHT}</span>` : '<span></span>')
+    : `<button class="dice" data-act="roll" data-d="${d}" aria-label="Pick a random dinner for ${dayName(d)}">${DICE}</button>`}</div>`;
+  }
+  if (locked) {
+    html += `</div><div class="actions one"><button class="btn soft" data-act="weekshop">Shopping list for this week</button></div>`;
+    app.innerHTML = html;
+    return;
   }
   html += `</div><div class="actions">${empty
     ? `<button class="btn primary" data-act="fill">Fill ${empty === 7 ? 'the week' : empty === 1 ? 'the empty day' : `the ${empty} empty days`}</button>`
     : '<button class="btn soft" data-act="clearall">Clear the week</button>'}
-    <button class="btn soft" data-act="shuffle"${cooking ? '' : ' disabled'}>Shuffle</button></div>`;
+    <button class="btn soft" data-act="shuffle"${cooking ? '' : ' disabled'}>Shuffle</button></div>
+    <button class="btn soft wide lockbtn" data-act="lockweek">${LOCK} Lock the week</button>
+    <p class="lockhelp">Locking keeps the plan from changing by accident. Tapping a dinner then opens its recipe.</p>`;
   app.innerHTML = html;
 }
 
@@ -237,6 +274,7 @@ function pickFor(day, extraUsed = []) {
 
 // Apply changes locally, show them, then save. On failure, reload from the server.
 async function changeDays(changes, swappedDay) {
+  if (changes.some((c) => dayLocked(c.day))) { toast('That week is locked. Unlock it on the Week tab to change it.'); return; }
   for (const c of changes) {
     if (c.clear) S.plan.delete(c.day);
     else S.plan.set(c.day, { ...(S.plan.get(c.day) || {}), ...c, household_id: S.household.id });
@@ -368,6 +406,11 @@ function addToDaySheet(id) {
   const r = byId(id);
   if (!r) return;
   const days = weekDays(S.weekStart);
+  if (weekLocked(S.weekStart)) {
+    openSheet(`<h2>${weekLabel(S.weekStart)} is locked</h2><div class="meta">Unlock it on the Week tab to add ${esc(r.name)}, or switch to another week there first.</div>
+      <div class="menu"><button class="btn primary" data-act="gotoweek">Go to the Week tab</button></div>`);
+    return;
+  }
   openSheet(`<h2>Add to which day?</h2><div class="meta">${esc(r.name)}, ${weekLabel(S.weekStart).toLowerCase()}</div><div class="menu">
     ${days.map((d) => { const e = dayEntry(d); const cur = e.kind ? (L.isOffKind(e.kind) ? L.OFF_KINDS[e.kind].label.toLowerCase() : e.name) : ''; return `<button class="btn soft" data-act="setday" data-d="${d}" data-id="${r.id}" data-go="week">${dayName(d)}${cur ? ` (replaces ${esc(cur)})` : ''}</button>`; }).join('')}
     </div>`);
@@ -770,7 +813,11 @@ document.addEventListener('click', async (e) => {
     case 'settings': settingsSheet(); break;
     case 'dicefilter': diceFilterSheet(); break;
     case 'closesheet': closeSheet(); break;
-    case 'day': dayMenu(day); break;
+    case 'day': if (dayLocked(day)) lockedDayTap(day); else dayMenu(day); break;
+    case 'lockweek': setLock(S.weekStart, true); break;
+    case 'gotoweek': closeSheet(); S.tab = 'week'; remember('tab', 'week'); render(); window.scrollTo(0, 0); break;
+    case 'unlockweek': setLock(S.weekStart, false); break;
+    case 'weekshop': S.shop.weekStart = S.weekStart; S.tab = 'shopping'; remember('tab', 'shopping'); render(); window.scrollTo(0, 0); break;
     case 'choose': chooser(day); break;
     case 'roll': case 'rollclose': {
       if (act === 'rollclose') closeSheet();
