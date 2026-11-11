@@ -44,6 +44,19 @@ Deno.serve(async (req) => {
     const days = await rest(
       `plan_days?select=id,day,kind,label,note,updated_at,recipes(name,link)&household_id=eq.${h.id}&day=gte.${from}&day=lte.${to}&order=day`,
     );
+    // Extra recipes on a day (sides, desserts) join that day's event. Week-level extras have no day and stay off the calendar.
+    const extras = await rest(
+      `plan_extras?select=day,label,recipes(name,link)&household_id=eq.${h.id}&day=gte.${from}&day=lte.${to}&order=created_at`,
+    ).catch(() => []);
+    const extrasByDay = new Map();
+    for (const x of extras) {
+      const list = extrasByDay.get(x.day) || [];
+      list.push({ name: x.recipes?.name || x.label, link: x.recipes?.link || '' });
+      extrasByDay.set(x.day, list);
+    }
+    const planned = new Set(days.map((d) => d.day));
+    for (const day of extrasByDay.keys()) if (!planned.has(day)) days.push({ id: `extras-${day}`, day, kind: 'extras_only' });
+    days.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
 
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
     const lines = [
@@ -53,9 +66,15 @@ Deno.serve(async (req) => {
     for (const d of days) {
       const start = new Date(d.day + 'T00:00:00Z');
       const end = new Date(start.getTime() + 86400000);
-      const name = d.kind === 'recipe' ? (d.recipes?.name || d.label || 'Dinner') : KIND_TITLE[d.kind] || 'Dinner';
-      const title = d.kind === 'eating_out' && d.note ? `Eating out: ${d.note}` : `Dinner: ${name}`;
-      const desc = [d.kind !== 'eating_out' ? d.note : '', d.recipes?.link || ''].filter(Boolean).join('\n');
+      const xs = extrasByDay.get(d.day) || [];
+      const xNames = xs.map((x) => x.name).join(', ');
+      let title;
+      if (d.kind === 'extras_only') title = `Dinner: ${xNames}`;
+      else {
+        const name = d.kind === 'recipe' ? (d.recipes?.name || d.label || 'Dinner') : KIND_TITLE[d.kind] || 'Dinner';
+        title = (d.kind === 'eating_out' && d.note ? `Eating out: ${d.note}` : `Dinner: ${name}`) + (xs.length ? ` + ${xNames}` : '');
+      }
+      const desc = [d.kind !== 'eating_out' ? d.note : '', d.recipes?.link || '', ...xs.map((x) => (x.link ? `${x.name}: ${x.link}` : ''))].filter(Boolean).join('\n');
       lines.push('BEGIN:VEVENT', `UID:${d.id}@mealtrackerweek`, `DTSTAMP:${stamp}`,
         `DTSTART;VALUE=DATE:${ymd(start)}`, `DTEND;VALUE=DATE:${ymd(end)}`, `SUMMARY:${esc(title)}`, 'TRANSP:TRANSPARENT');
       if (desc) lines.push(`DESCRIPTION:${esc(desc)}`);

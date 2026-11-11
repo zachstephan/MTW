@@ -43,7 +43,10 @@ const weekDays = (start) => Array.from({ length: 7 }, (_, i) => L.addDays(start,
 function visibleRecipes(includeHidden = false) {
   return S.recipes.filter((r) => includeHidden || !(r.library && S.hidden.has(r.id)));
 }
-function recalc() { S.stats = L.recipeStats([...S.plan.values()], S.today); }
+function recalc() {
+  const dayExtras = (S.extras || []).filter((x) => x.day && x.recipe_id).map((x) => ({ day: x.day, kind: 'recipe', recipe_id: x.recipe_id }));
+  S.stats = L.recipeStats([...S.plan.values(), ...dayExtras], S.today);
+}
 function lastMade() { const o = {}; for (const [id, s] of Object.entries(S.stats)) o[id] = s.last; return o; }
 function tagLine(r) {
   if (!r) return '';
@@ -62,6 +65,10 @@ function dayEntry(iso) {
   const r = p.recipe_id ? byId(p.recipe_id) : null;
   return { ...p, recipe: r, name: r ? r.name : p.label };
 }
+// Extra recipes: on a day (side, dessert, second dish) or for the week (to try, to bake, lunches).
+function dayExtras(day) { return (S.extras || []).filter((x) => x.day === day); }
+function weekExtras(ws) { return (S.extras || []).filter((x) => !x.day && x.week_start === ws); }
+function extraInfo(x) { const r = x.recipe_id ? byId(x.recipe_id) : null; return { r, name: r ? r.name : x.label }; }
 
 // ---------- boot ----------
 async function boot() {
@@ -106,6 +113,7 @@ async function loadData() {
   S.rules = new Map(d.rules.map((r) => [r.weekday, r]));
   S.hidden = new Set(d.hidden);
   S.locks = new Set(d.locks || []);
+  S.extras = d.extras || [];
   S.isAdmin = d.isAdmin;
   recalc();
 }
@@ -215,11 +223,53 @@ async function setLock(ws, locked) {
 
 // Tapping a day in a locked week: show what's planned instead of the change menu.
 function lockedDayTap(day) {
-  const e = dayEntry(day);
+  const e = dayEntry(day), xs = dayExtras(day);
+  if (xs.length) return dayRecipesSheet(day);
   if (e.recipe) return details(e.recipe.id);
   if (L.isOffKind(e.kind)) return toast(L.OFF_KINDS[e.kind].label + (e.note ? `: ${e.note}` : ''));
   if (e.kind) return toast(e.name || 'Dinner');
   toast('Nothing planned. Unlock the week to choose a dinner.');
+}
+
+function extraRows(list, removable) {
+  return list.map((x) => { const { r, name } = extraInfo(x); return `<div class="alsorow">
+    <button class="item" data-act="extra" data-x="${x.id}"><span><span class="name">${esc(name)}</span><span class="tags">${esc(r ? tagLine(r) || 'Tap to see the recipe' : 'Not in your recipes')}</span></span></button>
+    ${removable ? `<button class="xsmall" data-act="delextrarecipe" data-x="${x.id}" aria-label="Remove ${esc(name)}">${CLOSE}</button>` : ''}</div>`; }).join('');
+}
+
+// Locked week, a day with extras: show everything planned that day.
+function dayRecipesSheet(day) {
+  const e = dayEntry(day);
+  const main = e.recipe ? `<div class="alsorow"><button class="item" data-act="details" data-id="${e.recipe.id}"><span><span class="name">${esc(e.recipe.name)}</span><span class="tags">Dinner</span></span></button></div>`
+    : e.kind ? `<div class="alsorow"><div class="item"><span><span class="name">${esc(L.isOffKind(e.kind) ? L.OFF_KINDS[e.kind].label : e.name || 'Dinner')}</span></span></div></div>` : '';
+  openSheet(`<h2>${dayName(day)}, ${L.nice(day)}</h2><div class="meta">Tap a recipe to open it.</div><div class="also">${main}${extraRows(dayExtras(day), false)}</div>`);
+}
+
+// Add an extra recipe to a day (day set) or to the week (day empty).
+async function addExtra(day, r, label) {
+  const ws = day ? L.weekOf(day, startDay()) : S.weekStart;
+  if (weekLocked(ws)) { toast('That week is locked. Unlock it on the Week tab to change it.'); return; }
+  const list = day ? dayExtras(day) : weekExtras(ws);
+  if (r && list.some((x) => x.recipe_id === r.id)) { toast(`${r.name} is already there`); return; }
+  const temp = { id: 'tmp' + Date.now(), household_id: S.household.id, week_start: ws, day: day || null, recipe_id: r ? r.id : null, label: r ? r.name : label };
+  S.extras.push(temp); recalc(); render();
+  toast(`${temp.label} added to ${day ? dayName(day) : weekLabel(ws).toLowerCase()}`);
+  try {
+    const saved = await S.api.addPlanExtra(S.household.id, temp);
+    const at = S.extras.indexOf(temp); if (at > -1) S.extras[at] = saved;
+  } catch (e) {
+    S.extras = S.extras.filter((x) => x !== temp); recalc(); render();
+    toast(e.message || 'Couldn’t save. Check your connection.');
+  }
+}
+
+async function removeExtras(ids) {
+  if (!ids.length) return;
+  const gone = S.extras.filter((x) => ids.includes(x.id));
+  S.extras = S.extras.filter((x) => !ids.includes(x.id)); recalc(); render();
+  try { await S.api.deletePlanExtras(ids.filter((id) => !String(id).startsWith('tmp'))); } catch (e) {
+    S.extras.push(...gone); recalc(); render(); toast(e.message || 'Couldn’t save. Check your connection.');
+  }
 }
 
 function renderWeek(swapped) {
@@ -241,18 +291,26 @@ function renderWeek(swapped) {
     if (off) body = `<span class="name">${L.OFF_KINDS[e.kind].label}</span><span class="tags">${esc(e.note || L.OFF_KINDS[e.kind].hint)}</span>`;
     else if (e.kind) body = `<span class="name">${esc(e.name || 'Dinner')}</span><span class="tags">${esc(tagLine(e.recipe))}</span>`;
     else body = `<span class="hint">${locked ? 'Nothing planned' : 'Tap to choose'}</span>${rule && !locked ? `<span class="rulehint">${esc(dayName(d))}s: ${esc(L.ruleSummary(rule))}</span>` : ''}`;
+    const xs = dayExtras(d);
+    if (xs.length) body += `<span class="extras">+ ${esc(xs.map((x) => extraInfo(x).name).join(', '))}</span>`;
     html += `<div class="${cls}"><div class="date"><span class="dow">${dayName(d).slice(0, 3)}</span><span class="num">${Number(d.slice(8))}</span></div>
       <button class="what" data-act="day" data-d="${d}">${body}</button>
       ${locked
-    ? (e.recipe ? `<span class="go" aria-hidden="true">${RIGHT}</span>` : '<span></span>')
+    ? (e.recipe || xs.length ? `<span class="go" aria-hidden="true">${RIGHT}</span>` : '<span></span>')
     : `<button class="dice" data-act="roll" data-d="${d}" aria-label="Pick a random dinner for ${dayName(d)}">${DICE}</button>`}</div>`;
   }
+  html += '</div>';
+  const wx = weekExtras(S.weekStart);
+  if (wx.length || !locked) {
+    html += `<div class="also"><h3>Also this week</h3>${extraRows(wx, !locked)}
+      ${locked ? '' : `<button class="addalso" data-act="addweekextra">+ Add a recipe for the week</button>${wx.length ? '' : '<p class="lockhelp" style="margin-top:6px">Something to try, bake or have for lunches. It goes on the shopping list.</p>'}`}</div>`;
+  }
   if (locked) {
-    html += `</div><div class="actions one"><button class="btn soft" data-act="weekshop">Shopping list for this week</button></div>`;
+    html += `<div class="actions one"><button class="btn soft" data-act="weekshop">Shopping list for this week</button></div>`;
     app.innerHTML = html;
     return;
   }
-  html += `</div><div class="actions">${empty
+  html += `<div class="actions">${empty
     ? `<button class="btn primary" data-act="fill">Fill ${empty === 7 ? 'the week' : empty === 1 ? 'the empty day' : `the ${empty} empty days`}</button>`
     : '<button class="btn soft" data-act="clearall">Clear the week</button>'}
     <button class="btn soft" data-act="shuffle"${cooking ? '' : ' disabled'}>Shuffle</button></div>
@@ -301,6 +359,9 @@ function dayMenu(day) {
       <button class="btn soft" data-act="rollclose" data-d="${day}">Pick one at random</button>
       ${e.recipe ? `<button class="btn soft" data-act="details" data-id="${e.recipe.id}">See recipe</button>` : ''}
       ${e.recipe && safeUrl(e.recipe.link) ? `<a class="btn soft linkout" href="${esc(safeUrl(e.recipe.link))}" target="_blank" rel="noopener">Open the recipe page ${EXTERNAL}</a>` : ''}
+      <h3>Also on ${dayName(day)}</h3>
+      ${dayExtras(day).length ? `<div class="also">${extraRows(dayExtras(day), true)}</div>` : ''}
+      <button class="btn soft" data-act="adddayextra" data-d="${day}">+ Add another recipe, like a side or dessert</button>
       <h3>Not cooking?</h3><div class="offgrid">
       ${Object.entries(L.OFF_KINDS).map(([kind, o]) => `<button class="btn" data-act="${kind === 'eating_out' ? 'eatout' : 'setoff'}" data-d="${day}" data-kind="${kind}" aria-pressed="${e.kind === kind}">${o.label}</button>`).join('')}
       </div>
@@ -317,8 +378,13 @@ function eatOutSheet(day) {
   });
 }
 
-function chooser(day) {
-  openSheet(`<h2>${dayName(day)}</h2><div class="meta">Search by name or ingredients, or add something new.</div>
+// mode: 'dinner' (sets the day's dinner), 'extra' (adds another recipe to the day), 'week' (adds a recipe for the week)
+function chooser(day, mode = 'dinner') {
+  const title = mode === 'week' ? 'Add a recipe for the week' : mode === 'extra' ? `Add to ${dayName(day)}` : dayName(day);
+  const meta = mode === 'week' ? 'Something to try, bake or have for lunches. Search, or type a new name.'
+    : mode === 'extra' ? 'A side, dessert or second dish. Search, or type a new name.' : 'Search by name or ingredients, or add something new.';
+  const pickAct = mode === 'dinner' ? 'setday' : 'pickextra';
+  openSheet(`<h2>${esc(title)}</h2><div class="meta">${meta}</div>
     <div class="field"><input type="search" id="pq" placeholder="Recipe or ingredients, like chicken, rice" aria-label="Search recipes or ingredients" autocomplete="off"></div><div class="pick-list" id="pl"></div>`, (s) => {
     const input = s.querySelector('#pq'), pl = s.querySelector('#pl');
     const draw = () => {
@@ -330,8 +396,8 @@ function chooser(day) {
         if (found.length >= 80) break;
       }
       const exact = found.some(({ r }) => k(r.name) === q);
-      let out = found.map(({ r, m }) => `<button class="item" data-act="setday" data-d="${day}" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Recipe Bank</span>' : ''}</span><span class="tags">${m.hits.length ? 'Has ' + esc(m.hits.join(', ')) : esc(L.agoText((S.stats[r.id] || {}).last, S.today))}</span></span></button>`).join('');
-      if (q && !exact) out += `<button class="item" data-act="newforday" data-d="${day}" data-name="${esc(input.value.trim())}"><span><span class="name">Add “${esc(input.value.trim())}” as a new recipe</span><span class="tags">You can fill in the details now or later</span></span></button>`;
+      let out = found.map(({ r, m }) => `<button class="item" data-act="${pickAct}" data-d="${day || ''}" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Recipe Bank</span>' : ''}</span><span class="tags">${m.hits.length ? 'Has ' + esc(m.hits.join(', ')) : esc(L.agoText((S.stats[r.id] || {}).last, S.today))}</span></span></button>`).join('');
+      if (q && !exact) out += `<button class="item" data-act="newforday" data-d="${day || ''}" data-mode="${mode}" data-name="${esc(input.value.trim())}"><span><span class="name">Add “${esc(input.value.trim())}” as a new recipe</span><span class="tags">You can fill in the details now or later</span></span></button>`;
       pl.innerHTML = out || '<div class="item">No recipes yet. Type a name to add one.</div>';
     };
     input.addEventListener('input', draw); draw();
@@ -501,7 +567,7 @@ function ingredientsText(list) {
   return list.map((g) => g.raw || [g.quantity != null ? L.formatQty(g.quantity) : '', g.unit || '', g.item + (g.note ? `, ${g.note}` : '')].filter(Boolean).join(' ')).join('\n');
 }
 
-// opts: { forDay } to put the new recipe on a day after saving; { prefill } from a link import or a copied starter recipe
+// opts: { forDay } to put the new recipe on a day after saving; { forExtra: { day } } to add it as an extra (day null = the week); { prefill } from a link import or a copied starter recipe
 function editor(id, opts = {}) {
   const r = id ? byId(id) : { name: opts.name || '', cuisine: '', protein: '', meal_type: '', healthy: null, link: '', notes: '', servings: null, image_url: '', ingredients: [], ...(opts.prefill || {}) };
   const isNew = !id;
@@ -584,7 +650,8 @@ function editor(id, opts = {}) {
         if (opts.copiedFrom) { S.hidden.add(opts.copiedFrom); S.api.setHidden(S.household.id, opts.copiedFrom, true).catch(() => {}); }
         S.query = '';
         closeSheet();
-        if (opts.forDay) { S.tab = 'week'; remember('tab', 'week'); await changeDays([recipeChange(opts.forDay, saved)], opts.forDay); }
+        if (opts.forExtra) { S.tab = 'week'; remember('tab', 'week'); await addExtra(opts.forExtra.day, saved); }
+        else if (opts.forDay) { S.tab = 'week'; remember('tab', 'week'); await changeDays([recipeChange(opts.forDay, saved)], opts.forDay); }
         else render();
         toast(isNew ? (opts.copiedFrom ? 'Copied to My recipes' : 'Recipe added') : 'Changes saved');
       } catch (e) {
@@ -617,6 +684,12 @@ function shoppingData() {
     if (e.recipe && e.recipe.ingredients.length) entries.push({ recipeName: e.recipe.name, ingredients: e.recipe.ingredients });
     else if (e.recipe || e.name) missing.push(e.recipe || { name: e.name });
   }
+  const xs = (S.extras || []).filter((x) => (x.day ? days.includes(x.day) : x.week_start === S.shop.weekStart));
+  for (const x of xs) {
+    const { r, name } = extraInfo(x);
+    if (r && r.ingredients.length) entries.push({ recipeName: r.name, ingredients: r.ingredients });
+    else missing.push(r || { name });
+  }
   return { days, entries, missing, groups: L.buildShoppingList(entries) };
 }
 
@@ -633,7 +706,7 @@ function renderShopping() {
   let html = `<div class="top"><div><h1>Shopping</h1><div class="sub">${weekLabel(S.shop.weekStart)}, ${L.nice(days[0])} to ${L.nice(days[6])}</div></div>
     <div class="weeknav"><button class="round" data-act="shopprev" aria-label="Previous week">${LEFT}</button><button class="round" data-act="shopnext" aria-label="Next week">${RIGHT}</button></div></div>`;
   if (missing.length) {
-    html += `<div class="notice">${missing.length === 1 ? 'One dinner has' : `${missing.length} dinners have`} no ingredients yet, so ${missing.length === 1 ? 'it isn’t' : 'they aren’t'} on this list: ${missing.map((m) => m.id ? `<button data-act="edit" data-id="${m.id}">${esc(m.name)}</button>` : esc(m.name)).join(', ')}.</div>`;
+    html += `<div class="notice">${missing.length === 1 ? 'One recipe has' : `${missing.length} recipes have`} no ingredients yet, so ${missing.length === 1 ? 'it isn’t' : 'they aren’t'} on this list: ${missing.map((m) => m.id ? `<button data-act="edit" data-id="${m.id}">${esc(m.name)}</button>` : esc(m.name)).join(', ')}.</div>`;
   }
   if (!entries.length && !S.shop.extras.length) {
     html += `<div class="card"><h2>Nothing to buy yet</h2><p style="margin:0 0 14px;color:var(--muted)">Plan some dinners for this week and their ingredients show up here, grouped by aisle.</p><button class="btn primary" data-act="tab" data-tab="week">Go to the week</button></div>`;
@@ -724,7 +797,10 @@ function removeSheet() {
 function openSheet(html, after) {
   const existing = document.getElementById('scrim');
   if (existing) existing.remove();
-  else if (!S.sheetPushed) { try { history.pushState({ sheet: true }, ''); S.sheetPushed = true; } catch (_) { /* ignore */ } }
+  // A sheet that opens right after another closed (choose -> new recipe) reuses its history entry,
+  // so a pending history.back() doesn't race the new pushState and leave the app.
+  if (S.closingTimer) { clearTimeout(S.closingTimer); S.closingTimer = null; }
+  else if (!existing && !S.sheetPushed) { try { history.pushState({ sheet: true }, ''); S.sheetPushed = true; } catch (_) { /* ignore */ } }
   const s = document.createElement('div');
   s.className = 'scrim'; s.id = 'scrim';
   s.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="sheettop"><div class="grab"></div><button class="xbtn" data-act="closesheet" aria-label="Close">${CLOSE}</button></div>${html}</div>`;
@@ -737,10 +813,16 @@ function openSheet(html, after) {
 function closeSheet() {
   if (!document.getElementById('scrim')) return;
   removeSheet();
-  if (S.sheetPushed) { S.sheetPushed = false; S.ignorePop = true; try { history.back(); } catch (_) { S.ignorePop = false; } }
+  if (S.sheetPushed && !S.closingTimer) {
+    S.closingTimer = setTimeout(() => {
+      S.closingTimer = null; S.sheetPushed = false; S.ignorePop = true;
+      try { history.back(); } catch (_) { S.ignorePop = false; }
+    }, 0);
+  }
 }
 window.addEventListener('popstate', () => {
   if (S.ignorePop) { S.ignorePop = false; return; }
+  if (S.closingTimer) { clearTimeout(S.closingTimer); S.closingTimer = null; }
   S.sheetPushed = false;
   removeSheet();
 });
@@ -834,11 +916,16 @@ document.addEventListener('click', async (e) => {
       changeDays([recipeChange(day, r)], day);
       break;
     }
-    case 'newforday': closeSheet(); editor(null, { name: b.dataset.name, forDay: day }); break;
+    case 'newforday': closeSheet(); editor(null, b.dataset.mode && b.dataset.mode !== 'dinner' ? { name: b.dataset.name, forExtra: { day: day || null } } : { name: b.dataset.name, forDay: day }); break;
+    case 'adddayextra': chooser(day, 'extra'); break;
+    case 'addweekextra': chooser(null, 'week'); break;
+    case 'pickextra': { const r = byId(id); if (!r) return; closeSheet(); addExtra(day || null, r); break; }
+    case 'extra': { const x = (S.extras || []).find((y) => y.id === b.dataset.x); if (!x) return; const { r, name } = extraInfo(x); if (r) details(r.id); else toast(name); break; }
+    case 'delextrarecipe': removeExtras([b.dataset.x]); break;
     case 'setoff': closeSheet(); changeDays([{ day, kind: b.dataset.kind, recipe_id: null, label: null, note: null }], day); break;
     case 'eatout': eatOutSheet(day); break;
     case 'seteatout': { const note = document.getElementById('where').value.trim(); closeSheet(); changeDays([{ day, kind: 'eating_out', recipe_id: null, label: null, note }], day); break; }
-    case 'clearday': closeSheet(); changeDays([{ day, clear: true }]); break;
+    case 'clearday': closeSheet(); changeDays([{ day, clear: true }]); removeExtras(dayExtras(day).map((x) => x.id)); break;
     case 'fill': {
       const changes = [], used = [];
       let short = false;
@@ -872,7 +959,10 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'clearall':
-      ask('Clear the week?', 'All 7 days go back to empty.', 'Clear the week', () => changeDays(weekDays(S.weekStart).map((d) => ({ day: d, clear: true }))));
+      ask('Clear the week?', 'All 7 days go back to empty, and extra recipes come off too.', 'Clear the week', () => {
+        changeDays(weekDays(S.weekStart).map((d) => ({ day: d, clear: true })));
+        removeExtras(S.extras.filter((x) => (x.day ? weekDays(S.weekStart).includes(x.day) : x.week_start === S.weekStart)).map((x) => x.id));
+      });
       break;
 
     // filters

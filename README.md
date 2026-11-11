@@ -1,6 +1,6 @@
 # Meal Tracker Week
 
-Plan the week's dinners in a few taps: roll the dice, set day rules ("Tuesdays pick Mexican", "Fridays we eat out"), add recipes from a link, and get a shopping list grouped by aisle. Lock a week once it's planned, and tapping a dinner opens its recipe. Households share one plan; each household's recipes ("My recipes") are private, and a shared Recipe Bank is visible to everyone.
+Plan the week's dinners in a few taps: roll the dice, set day rules ("Tuesdays pick Mexican", "Fridays we eat out"), add recipes from a link, and get a shopping list grouped by aisle. Lock a week once it's planned, and tapping a dinner opens its recipe. Add extra recipes to a day (a side or dessert) or to the week (something to try or bake); they go on the shopping list too. Households share one plan; each household's recipes ("My recipes") are private, and a shared Recipe Bank is visible to everyone.
 
 ## How it's built
 
