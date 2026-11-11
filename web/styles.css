@@ -142,7 +142,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 .item .name { font-weight: 600; font-size: 16px; }
 .item .tags { display: block; color: var(--muted); font-size: 13.5px; margin-top: 2px; }
 .item .times { flex: 0 0 auto; color: var(--muted); font-size: 13.5px; text-align: right; }
-.badge { display: inline-block; font-size: 12px; font-weight: 650; color: var(--leaf); background: #E3EEDD; border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 1px; }
+.badge { display: inline-block; white-space: nowrap; font-size: 12px; font-weight: 650; color: var(--leaf); background: #E3EEDD; border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 1px; }
 .needs { color: var(--plum); font-weight: 600; }
 .letter { font-family: var(--serif); color: var(--plum); font-size: 20px; padding: 14px 16px 2px; background: var(--surface); }
 .textlink { background: none; border: 0; color: var(--plum); font-weight: 650; text-decoration: underline; text-underline-offset: 3px; padding: 12px 4px; }

@@ -259,7 +259,7 @@ function dayMenu(day) {
   const e = dayEntry(day);
   openSheet(`<h2>${dayName(day)}, ${L.nice(day)}</h2><div class="meta">${e.kind ? esc(L.isOffKind(e.kind) ? L.OFF_KINDS[e.kind].label : e.name) : 'Nothing planned yet'}</div>
     <div class="menu">
-      <button class="btn primary" data-act="choose" data-d="${day}">Choose from our recipes</button>
+      <button class="btn primary" data-act="choose" data-d="${day}">Choose a recipe</button>
       <button class="btn soft" data-act="rollclose" data-d="${day}">Pick one at random</button>
       ${e.recipe ? `<button class="btn soft" data-act="details" data-id="${e.recipe.id}">See recipe</button>` : ''}
       ${e.recipe && safeUrl(e.recipe.link) ? `<a class="btn soft linkout" href="${esc(safeUrl(e.recipe.link))}" target="_blank" rel="noopener">Open the recipe page ${EXTERNAL}</a>` : ''}
@@ -292,7 +292,7 @@ function chooser(day) {
         if (found.length >= 80) break;
       }
       const exact = found.some(({ r }) => k(r.name) === q);
-      let out = found.map(({ r, m }) => `<button class="item" data-act="setday" data-d="${day}" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Starter</span>' : ''}</span><span class="tags">${m.hits.length ? 'Has ' + esc(m.hits.join(', ')) : esc(L.agoText((S.stats[r.id] || {}).last, S.today))}</span></span></button>`).join('');
+      let out = found.map(({ r, m }) => `<button class="item" data-act="setday" data-d="${day}" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Recipe Bank</span>' : ''}</span><span class="tags">${m.hits.length ? 'Has ' + esc(m.hits.join(', ')) : esc(L.agoText((S.stats[r.id] || {}).last, S.today))}</span></span></button>`).join('');
       if (q && !exact) out += `<button class="item" data-act="newforday" data-d="${day}" data-name="${esc(input.value.trim())}"><span><span class="name">Add “${esc(input.value.trim())}” as a new recipe</span><span class="tags">You can fill in the details now or later</span></span></button>`;
       pl.innerHTML = out || '<div class="item">No recipes yet. Type a name to add one.</div>';
     };
@@ -302,7 +302,7 @@ function chooser(day) {
 
 // ---------- filters ----------
 function filterSummary(f) {
-  const parts = [].concat(f.source === 'ours' ? ['Our recipes'] : f.source === 'starter' ? ['Starter recipes'] : [], f.cuisine, f.protein, f.meal_type);
+  const parts = [].concat(f.source === 'ours' ? ['My recipes'] : f.source === 'starter' ? ['Recipe Bank'] : [], f.cuisine, f.protein, f.meal_type);
   if (f.healthy) parts.push('Healthy only');
   return parts.length ? parts.join(', ') : 'All recipes';
 }
@@ -315,7 +315,7 @@ function chipRow(ctx, title, field, values) {
 function sourceRow(ctx) {
   const cur = S.f[ctx].source || 'all';
   const opt = (v, label) => `<button class="chip" data-act="source" data-ctx="${ctx}" data-v="${v}" aria-pressed="${cur === v}">${label}</button>`;
-  return `<div class="fgroup"><h3>Recipes from</h3><div class="chips" data-row="source">${opt('all', 'Everywhere')}${opt('ours', 'Our recipes')}${opt('starter', 'Starter recipes')}</div></div>`;
+  return `<div class="fgroup"><h3>Recipes from</h3><div class="chips" data-row="source">${opt('all', 'Everywhere')}${opt('ours', 'My recipes')}${opt('starter', 'Recipe Bank')}</div></div>`;
 }
 function filterPanel(ctx, cls = '') {
   const showSource = ctx !== 'rule' && S.recipes.some((x) => x.library) && S.recipes.some((x) => !x.library);
@@ -403,12 +403,12 @@ function renderRecipes() {
       const st = S.stats[r.id], needs = !r.cuisine || !r.meal_type, isHidden = r.library && S.hidden.has(r.id), link = safeUrl(r.link);
       const sub = r._hits.length ? `Has ${esc(r._hits.join(', '))}` : isHidden ? 'Hidden from the dice' : needs ? '<span class="needs">Needs details</span>' : esc(tagLine(r));
       const right = S.sort === 'recent' || S.sort === 'lately' ? (st && st.last ? L.nice(st.last) : 'Never') : (st && st.times ? st.times + '×' : 'New');
-      html += `<div class="row"><button class="item" data-act="details" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Starter</span>' : ''}</span>
+      html += `<div class="row"><button class="item" data-act="details" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Recipe Bank</span>' : ''}</span>
         <span class="tags">${sub}</span></span><span class="times">${right}</span></button>${link ? `<a class="linkicon" href="${esc(link)}" target="_blank" rel="noopener" aria-label="Open the ${esc(r.name)} recipe page">${EXTERNAL}</a>` : ''}</div>`;
     }
     html += '</div>';
   }
-  if (hiddenCount) html += `<button class="textlink" data-act="togglehidden">${S.showHidden ? 'Hide' : 'Show'} ${hiddenCount} hidden starter ${hiddenCount === 1 ? 'recipe' : 'recipes'}</button>`;
+  if (hiddenCount) html += `<button class="textlink" data-act="togglehidden">${S.showHidden ? 'Hide' : 'Show'} ${hiddenCount} hidden Recipe Bank ${hiddenCount === 1 ? 'recipe' : 'recipes'}</button>`;
   app.innerHTML = html;
   document.getElementById('sortSel').addEventListener('change', (e) => { S.sort = e.target.value; remember('sort', S.sort); renderRecipes(); });
   const input = document.getElementById('q');
@@ -430,7 +430,7 @@ function details(id) {
   if (!r) return;
   const st = S.stats[r.id] || {}, isHidden = r.library && S.hidden.has(r.id);
   openSheet(`${safeUrl(r.image_url) ? `<img class="hero" src="${esc(safeUrl(r.image_url))}" alt="" loading="lazy">` : ''}
-    <h2>${esc(r.name)}${r.library ? '<span class="badge">Starter</span>' : ''}</h2>
+    <h2>${esc(r.name)}${r.library ? '<span class="badge">Recipe Bank</span>' : ''}</h2>
     <div class="meta">${esc(tagLine(r) || 'No details yet')}<br>${L.agoText(st.last, S.today)}${st.times ? `, ${st.times} ${st.times === 1 ? 'time' : 'times'} so far` : ''}${r.servings ? `. Serves ${r.servings}` : ''}</div>
     ${r.notes ? `<p style="margin:0 0 12px">${esc(r.notes)}</p>` : ''}
     ${r.ingredients.length ? `<h3 class="subhead">Ingredients</h3><ul class="inglist">${r.ingredients.map((g) => { const l = ingredientLine(g); return `<li>${l.amt ? `<span class="q">${esc(l.amt)}</span> ` : ''}${esc(l.text)}</li>`; }).join('')}</ul>` : ''}
@@ -440,7 +440,7 @@ function details(id) {
     <div class="menu">
       <button class="btn primary" data-act="addto" data-id="${r.id}">Add to a day</button>
       ${canEdit(r) ? `<button class="btn soft" data-act="edit" data-id="${r.id}">Edit${r.ingredients.length ? '' : ' and add ingredients'}</button>` : ''}
-      ${r.library ? `<button class="btn soft" data-act="copy" data-id="${r.id}">Copy to our recipes so we can change it</button>
+      ${r.library ? `<button class="btn soft" data-act="copy" data-id="${r.id}">Copy to My recipes to edit it</button>
         <button class="btn soft" data-act="${isHidden ? 'unhide' : 'hide'}" data-id="${r.id}">${isHidden ? 'Let the dice pick it again' : 'Don’t suggest this one'}</button>` : ''}
       ${canEdit(r) ? `<button class="btn danger" data-act="delete" data-id="${r.id}">Delete recipe</button>` : ''}
     </div>`);
@@ -543,7 +543,7 @@ function editor(id, opts = {}) {
         closeSheet();
         if (opts.forDay) { S.tab = 'week'; remember('tab', 'week'); await changeDays([recipeChange(opts.forDay, saved)], opts.forDay); }
         else render();
-        toast(isNew ? (opts.copiedFrom ? 'Copied to your recipes' : 'Recipe added') : 'Changes saved');
+        toast(isNew ? (opts.copiedFrom ? 'Copied to My recipes' : 'Recipe added') : 'Changes saved');
       } catch (e) {
         btn.disabled = false; btn.textContent = isNew ? 'Add recipe' : 'Save changes';
         err.textContent = e.message; err.classList.remove('hidden');
@@ -650,8 +650,8 @@ function settingsSheet() {
       <div class="copyrow"><input readonly value="${esc(S.api.calendarUrl(h.calendar_token))}" aria-label="Calendar link"><button class="btn primary small" data-act="copycal">Copy</button></div>
       <p style="margin-top:10px">iPhone: Settings › Calendar › Accounts › Add Account › Other › Add Subscribed Calendar, then paste.<br>Google Calendar (on a computer): Other calendars › + › From URL, then paste.</p>
       <button class="textlink" data-act="newcal">Make a new link (stops the old one working)</button></div>
-    ${S.isAdmin ? `<div class="setting"><h3>Starter recipes</h3><p>${S.recipes.filter((x) => x.library).length} starter recipes are in the app for every household. Add new ones from the recipe file that ships with the app.</p>
-      <button class="btn soft wide" data-act="syncstarter">Check for new starter recipes</button></div>` : ''}
+    ${S.isAdmin ? `<div class="setting"><h3>Recipe Bank</h3><p>${S.recipes.filter((x) => x.library).length} recipes are in the Recipe Bank for every household. Add new ones from the recipe file that ships with the app.</p>
+      <button class="btn soft wide" data-act="syncstarter">Check for new Recipe Bank recipes</button></div>` : ''}
     <div class="setting"><h3>Account</h3><p>Signed in as ${esc((S.session && S.session.user && S.session.user.email) || '')}.</p><button class="btn soft wide" data-act="signout">Sign out</button></div>`);
 }
 
@@ -856,14 +856,14 @@ document.addEventListener('click', async (e) => {
         const file = await (await fetch('starter-recipes.json', { cache: 'no-store' })).json();
         const have = new Set(S.recipes.filter((x) => x.library).map((x) => k(x.name)));
         const missing = (file.recipes || []).filter((x) => x.name && !have.has(k(x.name)));
-        if (!missing.length) { b.disabled = false; b.textContent = 'Check for new starter recipes'; toast('Starter recipes are up to date'); break; }
-        ask(`Add ${missing.length} starter recipes?`, 'Every household will see them, marked Starter. Households can hide any they don’t want.', `Add ${missing.length} recipes`, async () => {
+        if (!missing.length) { b.disabled = false; b.textContent = 'Check for new Recipe Bank recipes'; toast('The Recipe Bank is up to date'); break; }
+        ask(`Add ${missing.length} recipes to the Recipe Bank?`, 'Every household will see them in the Recipe Bank. Households can turn off any they don’t want suggested.', `Add ${missing.length} recipes`, async () => {
           try {
-            await S.api.addLibraryRecipes(missing, (done, total) => toast(`Adding starter recipes… ${done} of ${total}`));
-            await loadData(); render(); toast(`Added ${missing.length} starter recipes`);
+            await S.api.addLibraryRecipes(missing, (done, total) => toast(`Adding to the Recipe Bank… ${done} of ${total}`));
+            await loadData(); render(); toast(`Added ${missing.length} recipes to the Recipe Bank`);
           } catch (err) { toast(err.message); }
         });
-      } catch (err) { b.disabled = false; b.textContent = 'Check for new starter recipes'; toast('Couldn’t read the recipe file. ' + (err.message || '')); }
+      } catch (err) { b.disabled = false; b.textContent = 'Check for new Recipe Bank recipes'; toast('Couldn’t read the recipe file. ' + (err.message || '')); }
       break;
     }
     case 'togglehidden': S.showHidden = !S.showHidden; render(); break;
