@@ -137,14 +137,18 @@ export const AISLES = ['Produce', 'Meat & seafood', 'Dairy & eggs', 'Bakery', 'P
 const AISLE_WORDS = [
   // Specific phrases first, so "frozen peas" isn't produce and "peanut butter" isn't dairy.
   ['Frozen', ['frozen']],
-  ['Canned & jarred', ['broth', 'stock', 'bouillon', 'crushed tomatoes', 'diced tomatoes', 'tomato sauce', 'tomato paste', 'green chiles', 'canned', 'sun-dried', 'marinara']],
-  ['Pantry', ['gnocchi', 'peanut butter', 'peanuts', 'breadcrumbs', 'panko']],
-  ['Produce', ['green bean']],
-  ['Spices & oils', ['salt', 'pepper flakes', 'black pepper', 'cumin', 'paprika', 'oregano', 'chili powder', 'cinnamon', 'garlic powder', 'onion powder', 'thyme', 'basil leaves dried', 'bay leaf', 'bay leaves', 'curry powder', 'garam masala', 'turmeric', 'cayenne', 'nutmeg', 'italian seasoning', 'seasoning', 'olive oil', 'vegetable oil', 'canola oil', 'sesame oil', 'oil', 'vinegar', 'cooking spray', 'vanilla']],
-  ['Meat & seafood', ['chicken', 'beef', 'pork', 'turkey', 'sausage', 'bacon', 'ham', 'steak', 'salmon', 'shrimp', 'fish', 'tuna steak', 'cod', 'tilapia', 'lamb', 'brisket', 'ribs', 'chorizo', 'andouille', 'meatball', 'prosciutto', 'salami', 'pepperoni']],
+  ['Canned & jarred', ['broth', 'stock', 'bouillon', 'crushed tomatoes', 'diced tomatoes', 'tomato sauce', 'tomato paste', 'green chiles', 'canned', 'sun-dried', 'marinara',
+    'cream of', 'condensed', 'pepperoncini', 'adobo', 'pimiento', 'pickle', 'sauerkraut', 'clam', 'tuna', 'pineapple', 'curry paste', 'kernel corn']],
+  ['Dairy & eggs', ['refrigerated', 'biscuits', 'pizza dough', 'wonton', 'velveeta', 'half-and-half', 'queso', 'tzatziki', 'orange juice', 'tofu']],
+  ['Pantry', ['gnocchi', 'peanut butter', 'peanuts', 'breadcrumbs', 'panko', 'egg noodles', 'chips', 'cornmeal', 'cornstarch', 'soup mix', 'gravy mix', 'stuffing',
+    'cashew', 'barley', 'cornbread', 'macaroni', 'rotini', 'penne', 'rigatoni', 'linguine', 'fettuccine', 'manicotti', 'ziti', 'pasta shells', 'wine']],
+  ['Bakery', ['corn tortilla']],
+  ['Produce', ['green bean', 'eggplant', 'fresh dill', 'fresh rosemary', 'fresh thyme']],
+  ['Spices & oils', ['salt', 'pepper flakes', 'black pepper', 'cumin', 'paprika', 'oregano', 'chili powder', 'cinnamon', 'garlic powder', 'onion powder', 'thyme', 'basil leaves dried', 'bay leaf', 'bay leaves', 'curry powder', 'garam masala', 'turmeric', 'cayenne', 'nutmeg', 'italian seasoning', 'seasoning', 'olive oil', 'vegetable oil', 'canola oil', 'sesame oil', 'oil', 'vinegar', 'cooking spray', 'vanilla', 'sesame seeds', 'poppy seeds', 'rosemary', ' sage', 'dill']],
+  ['Meat & seafood', ['chicken', 'beef', 'pork', 'turkey', 'sausage', 'bacon', 'ham', 'steak', 'salmon', 'shrimp', 'fish', 'tuna steak', 'cod', 'tilapia', 'lamb', 'brisket', 'ribs', 'chorizo', 'andouille', 'meatball', 'prosciutto', 'salami', 'pepperoni', 'crab']],
   ['Dairy & eggs', ['milk', 'cream', 'butter', 'cheese', 'cheddar', 'mozzarella', 'parmesan', 'feta', 'yogurt', 'sour cream', 'egg', 'half and half', 'ricotta', 'cottage', 'oaxaca', 'colby', 'monterey']],
-  ['Produce', ['onion', 'garlic', 'tomato', 'potato', 'carrot', 'celery', 'pepper', 'jalapeño', 'jalapeno', 'lettuce', 'romaine', 'spinach', 'kale', 'cabbage', 'broccoli', 'cauliflower', 'zucchini', 'squash', 'cucumber', 'avocado', 'lime', 'lemon', 'cilantro', 'parsley', 'basil', 'mint', 'ginger', 'scallion', 'green onion', 'shallot', 'mushroom', 'corn on the cob', 'apple', 'banana', 'berries', 'strawberr', 'okra', 'green bean', 'asparagus', 'brussels', 'sweet potato', 'beet', 'arugula', 'jicama', 'herbs']],
-  ['Bakery', ['bread', 'bun', 'tortilla', 'pita', 'naan', 'roll', 'baguette', 'bagel', 'croissant']],
+  ['Produce', ['onion', 'garlic', 'tomato', 'potato', 'carrot', 'celery', 'pepper', 'jalapeño', 'jalapeno', 'lettuce', 'romaine', 'spinach', 'kale', 'cabbage', 'broccoli', 'cauliflower', 'zucchini', 'squash', 'cucumber', 'avocado', 'lime', 'lemon', 'cilantro', 'parsley', 'basil', 'mint', 'ginger', 'scallion', 'green onion', 'shallot', 'mushroom', 'corn on the cob', 'apple', 'banana', 'berries', 'strawberr', 'okra', 'green bean', 'asparagus', 'brussels', 'sweet potato', 'beet', 'arugula', 'jicama', 'herbs', 'corn', 'orange', 'parsnip', 'snap peas', 'sprouts', 'slaw']],
+  ['Bakery', ['bread', 'bun', 'tortilla', 'pita', 'naan', 'roll', 'baguette', 'bagel', 'croissant', 'english muffin', 'crust']],
   ['Frozen', ['frozen', 'ice cream']],
   ['Canned & jarred', ['canned', 'can ', 'broth', 'stock', 'tomato sauce', 'tomato paste', 'diced tomatoes', 'crushed tomatoes', 'beans', 'chickpeas', 'salsa', 'enchilada sauce', 'coconut milk', 'olives', 'pickles', 'soup', 'artichoke', 'roasted red pepper', 'marinara', 'pesto', 'ro*tel', 'rotel']],
   ['Pantry', ['rice', 'pasta', 'spaghetti', 'noodle', 'flour', 'sugar', 'brown sugar', 'honey', 'maple', 'soy sauce', 'teriyaki', 'hoisin', 'sriracha', 'ketchup', 'mustard', 'mayo', 'mayonnaise', 'breadcrumbs', 'panko', 'oats', 'quinoa', 'lentils', 'peanut butter', 'cornstarch', 'baking', 'chips', 'crackers', 'orzo', 'couscous', 'grits', 'sauce', 'dressing', 'cornmeal', 'yeast']],
@@ -153,6 +157,11 @@ export function guessAisle(item) {
   const s = ' ' + String(item || '').toLowerCase() + ' ';
   for (const [aisle, words] of AISLE_WORDS) for (const w of words) if (s.includes(w)) return aisle;
   return 'Other';
+}
+// The stored aisle is only a cached guess, so re-guess with the current word list and fall back to it.
+function aisleFor(ing) {
+  const g = guessAisle(ing.item);
+  return g !== 'Other' ? g : (ing.aisle || g);
 }
 
 // ---------- quantities ----------
@@ -218,7 +227,7 @@ export function buildShoppingList(entries) {
     for (const ing of e.ingredients || []) {
       if (!ing || !ing.item) continue;
       const key = itemKey(ing.item);
-      const cur = map.get(key) || { key, name: ing.item.trim(), aisle: ing.aisle || guessAisle(ing.item), amounts: [], recipes: [] };
+      const cur = map.get(key) || { key, name: ing.item.trim(), aisle: aisleFor(ing), amounts: [], recipes: [] };
       cur.amounts.push({ quantity: ing.quantity == null ? null : Number(ing.quantity), unit: ing.unit || null });
       if (!cur.recipes.includes(e.recipeName)) cur.recipes.push(e.recipeName);
       if (ing.item.trim().length < cur.name.length) cur.name = ing.item.trim();

@@ -56,6 +56,17 @@ test('aisle guesses', () => {
   assert.equal(guessAisle('peanut butter'), 'Pantry');
   assert.equal(guessAisle('cherry tomatoes'), 'Produce');
   assert.equal(guessAisle('ground cumin'), 'Spices & oils');
+  assert.equal(guessAisle('cream of chicken soup'), 'Canned & jarred');
+  assert.equal(guessAisle('egg noodles'), 'Pantry');
+  assert.equal(guessAisle('eggplant'), 'Produce');
+  assert.equal(guessAisle('crushed tortilla chips'), 'Pantry');
+  assert.equal(guessAisle('onion soup mix'), 'Pantry');
+  assert.equal(guessAisle('pineapple chunks'), 'Canned & jarred');
+  assert.equal(guessAisle('lump crab meat'), 'Meat & seafood');
+  assert.equal(guessAisle('elbow macaroni'), 'Pantry');
+  assert.equal(guessAisle('Velveeta'), 'Dairy & eggs');
+  assert.equal(guessAisle('corn'), 'Produce');
+  assert.equal(guessAisle('cornstarch'), 'Pantry');
 });
 
 test('formats quantities as friendly fractions', () => {
@@ -160,4 +171,11 @@ test('source filter splits our recipes from starter ones', () => {
   assert.ok(passes(ours, f) && !passes(lib, f));
   assert.ok(passes(lib, { ...blankFilter(), source: 'starter' }));
   assert.equal(activeCount(f), 1);
+});
+
+test('aisle words do not misfire inside longer words', () => {
+  assert.equal(guessAisle('italian sausage'), 'Meat & seafood');
+  assert.equal(guessAisle('dried sage'), 'Spices & oils');
+  assert.equal(guessAisle('corn tortillas'), 'Bakery');
+  assert.equal(guessAisle('cornbread mix'), 'Pantry');
 });
