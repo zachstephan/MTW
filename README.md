@@ -25,6 +25,10 @@ Supabase project: `nrflpcnvbimunhmpxnsm` in the **Meal Tracker Week** organizati
 4. **Optional: starter-library editor.** To let an account add starter recipes everyone sees, run in the SQL editor:
    `insert into public.app_admins (user_id) select id from auth.users where email = 'you@example.com';`
 
+## Starter recipes
+
+`web/starter-recipes.json` holds the shared starter set: 203 public-domain recipes from [Public Domain Recipes](https://publicdomainrecipes.com) and [based.cooking](https://based.cooking) (both released under the Unlicense), plus 47 written for this app. To add more, append to that file, push, then in the app open Settings › Starter recipes › **Check for new starter recipes** (only starter-library editors see it). Recipes already in the app, matched by name, are skipped.
+
 ## Changing things later
 
 - Database: add a new file in `supabase/migrations/` and apply it. Don't edit applied ones.

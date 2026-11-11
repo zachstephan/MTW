@@ -7,6 +7,8 @@ const DICE = '<svg viewBox="0 0 24 24" fill="none" stroke="#22301E" stroke-width
 const LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 const RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>';
 const GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+const CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const EXTERNAL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
 const TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
 // ---------- state ----------
@@ -20,7 +22,14 @@ const S = {
   showRecipeFilters: false, showHidden: false, pick: null, query: '',
   shop: { weekStart: null, checks: new Set(), extras: [], loadedFor: null },
   ruleDraft: null, authMode: 'signin', authMsg: null,
+  sort: 'az', sheetPushed: false, ignorePop: false,
 };
+
+// Small per-device memory (last tab, sort). Storage can be unavailable (private mode), so never rely on it.
+function remember(key, value) { try { localStorage.setItem('mtw.' + key, value); } catch (_) { /* ignore */ } }
+function recall(key, fallback) { try { return localStorage.getItem('mtw.' + key) || fallback; } catch (_) { return fallback; } }
+S.tab = ['week', 'surprise', 'recipes', 'shopping'].includes(recall('tab')) ? recall('tab') : 'week';
+S.sort = L.SORTS[recall('sort')] ? recall('sort') : 'az';
 
 // ---------- small helpers ----------
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -253,6 +262,7 @@ function dayMenu(day) {
       <button class="btn primary" data-act="choose" data-d="${day}">Choose from our recipes</button>
       <button class="btn soft" data-act="rollclose" data-d="${day}">Pick one at random</button>
       ${e.recipe ? `<button class="btn soft" data-act="details" data-id="${e.recipe.id}">See recipe</button>` : ''}
+      ${e.recipe && safeUrl(e.recipe.link) ? `<a class="btn soft linkout" href="${esc(safeUrl(e.recipe.link))}" target="_blank" rel="noopener">Open the recipe page ${EXTERNAL}</a>` : ''}
       <h3>Not cooking?</h3><div class="offgrid">
       ${Object.entries(L.OFF_KINDS).map(([kind, o]) => `<button class="btn" data-act="${kind === 'eating_out' ? 'eatout' : 'setoff'}" data-d="${day}" data-kind="${kind}" aria-pressed="${e.kind === kind}">${o.label}</button>`).join('')}
       </div>
@@ -270,14 +280,19 @@ function eatOutSheet(day) {
 }
 
 function chooser(day) {
-  openSheet(`<h2>${dayName(day)}</h2><div class="meta">Type to search, or add something new.</div>
-    <div class="field"><input type="search" id="pq" placeholder="Search recipes" aria-label="Search recipes"></div><div class="pick-list" id="pl"></div>`, (s) => {
+  openSheet(`<h2>${dayName(day)}</h2><div class="meta">Search by name or ingredients, or add something new.</div>
+    <div class="field"><input type="search" id="pq" placeholder="Recipe or ingredients, like chicken, rice" aria-label="Search recipes or ingredients" autocomplete="off"></div><div class="pick-list" id="pl"></div>`, (s) => {
     const input = s.querySelector('#pq'), pl = s.querySelector('#pl');
     const draw = () => {
-      const q = k(input.value);
-      const list = visibleRecipes().slice().sort((a, b) => a.name.localeCompare(b.name)).filter((r) => !q || k(r.name).includes(q)).slice(0, 80);
-      const exact = list.some((r) => k(r.name) === q);
-      let out = list.map((r) => `<button class="item" data-act="setday" data-d="${day}" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Starter</span>' : ''}</span><span class="tags">${esc(L.agoText((S.stats[r.id] || {}).last, S.today))}</span></span></button>`).join('');
+      const q = k(input.value), terms = L.searchTerms(q);
+      const found = [];
+      for (const r of L.sortRecipes(visibleRecipes(), q ? 'az' : 'recent', S.stats)) {
+        const m = L.matchRecipe(r, terms);
+        if (m) found.push({ r, m });
+        if (found.length >= 80) break;
+      }
+      const exact = found.some(({ r }) => k(r.name) === q);
+      let out = found.map(({ r, m }) => `<button class="item" data-act="setday" data-d="${day}" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Starter</span>' : ''}</span><span class="tags">${m.hits.length ? 'Has ' + esc(m.hits.join(', ')) : esc(L.agoText((S.stats[r.id] || {}).last, S.today))}</span></span></button>`).join('');
       if (q && !exact) out += `<button class="item" data-act="newforday" data-d="${day}" data-name="${esc(input.value.trim())}"><span><span class="name">Add “${esc(input.value.trim())}” as a new recipe</span><span class="tags">You can fill in the details now or later</span></span></button>`;
       pl.innerHTML = out || '<div class="item">No recipes yet. Type a name to add one.</div>';
     };
@@ -287,7 +302,7 @@ function chooser(day) {
 
 // ---------- filters ----------
 function filterSummary(f) {
-  const parts = [].concat(f.cuisine, f.protein, f.meal_type);
+  const parts = [].concat(f.source === 'ours' ? ['Our recipes'] : f.source === 'starter' ? ['Starter recipes'] : [], f.cuisine, f.protein, f.meal_type);
   if (f.healthy) parts.push('Healthy only');
   return parts.length ? parts.join(', ') : 'All recipes';
 }
@@ -297,8 +312,14 @@ function chipRow(ctx, title, field, values) {
     <button class="chip" data-act="filter" data-ctx="${ctx}" data-f="${field}" data-v="" aria-pressed="${!cur.length}">Any</button>
     ${values.map((v) => `<button class="chip" data-act="filter" data-ctx="${ctx}" data-f="${field}" data-v="${esc(v)}" aria-pressed="${cur.includes(v)}">${esc(v)}</button>`).join('')}</div></div>`;
 }
+function sourceRow(ctx) {
+  const cur = S.f[ctx].source || 'all';
+  const opt = (v, label) => `<button class="chip" data-act="source" data-ctx="${ctx}" data-v="${v}" aria-pressed="${cur === v}">${label}</button>`;
+  return `<div class="fgroup"><h3>Recipes from</h3><div class="chips" data-row="source">${opt('all', 'Everywhere')}${opt('ours', 'Our recipes')}${opt('starter', 'Starter recipes')}</div></div>`;
+}
 function filterPanel(ctx, cls = '') {
-  return `<div class="filters ${cls}" id="fp-${ctx}">${chipRow(ctx, 'Cuisine', 'cuisine', uniq('cuisine'))}${chipRow(ctx, 'Protein', 'protein', uniq('protein'))}${chipRow(ctx, 'Kind of meal', 'meal_type', uniq('meal_type'))}
+  const showSource = ctx !== 'rule' && S.recipes.some((x) => x.library) && S.recipes.some((x) => !x.library);
+  return `<div class="filters ${cls}" id="fp-${ctx}">${showSource ? sourceRow(ctx) : ''}${chipRow(ctx, 'Cuisine', 'cuisine', uniq('cuisine'))}${chipRow(ctx, 'Protein', 'protein', uniq('protein'))}${chipRow(ctx, 'Kind of meal', 'meal_type', uniq('meal_type'))}
     <div class="toggle-row"><span>Healthy only</span><button class="switch" role="switch" data-act="healthy" data-ctx="${ctx}" aria-checked="${S.f[ctx].healthy}" aria-label="Healthy only"></button></div></div>`;
 }
 function toggleFilter(ctx, field, v) {
@@ -354,14 +375,20 @@ function addToDaySheet(id) {
 
 // ---------- Recipes ----------
 function renderRecipes() {
-  const q = k(S.query), rf = S.f.recipes, nOn = L.activeCount(rf);
-  const all = visibleRecipes(S.showHidden).slice().sort((a, b) => a.name.localeCompare(b.name));
-  const list = all.filter((r) => (!q || k(r.name).includes(q) || k(tagLine(r)).includes(q)) && L.passes(r, rf));
+  const q = k(S.query), terms = L.searchTerms(q), rf = S.f.recipes, nOn = L.activeCount(rf);
+  const all = visibleRecipes(S.showHidden);
+  const list = [];
+  for (const r of L.sortRecipes(all, S.sort, S.stats)) {
+    if (!L.passes(r, rf)) continue;
+    const m = L.matchRecipe(r, terms);
+    if (m) list.push({ ...r, _hits: m.hits });
+  }
   const hiddenCount = S.recipes.filter((r) => r.library && S.hidden.has(r.id)).length;
   let html = `<div class="top"><div><h1>Recipes</h1><div class="sub">${nOn || q ? `${list.length} of ${all.length} shown` : `${all.length} in your box`}</div></div>
       <button class="btn primary small" data-act="new">Add</button></div>
-    <div class="search"><input type="search" id="q" placeholder="Search recipes" value="${esc(S.query)}" aria-label="Search recipes">
+    <div class="search"><input type="search" id="q" placeholder="Recipe or ingredients, like chicken, rice" value="${esc(S.query)}" aria-label="Search recipes or ingredients" autocomplete="off" enterkeyhint="search">
       <button class="btn soft filterbtn${nOn || S.showRecipeFilters ? ' on' : ''}" data-act="togglefilters" aria-expanded="${S.showRecipeFilters}">${nOn ? `Filters (${nOn})` : 'Filter'}</button></div>
+    <div class="sortrow"><label for="sortSel">Sort</label><select id="sortSel">${Object.entries(L.SORTS).map(([v, label]) => `<option value="${v}"${v === S.sort ? ' selected' : ''}>${label}</option>`).join('')}</select></div>
     ${S.showRecipeFilters ? filterPanel('recipes', 'inpage') + (nOn ? '<button class="btn soft wide" data-act="clearfilters" data-ctx="recipes" style="margin:-4px 0 14px">Clear filters</button>' : '') : ''}`;
   if (!list.length) {
     html += nOn && !q
@@ -372,16 +399,18 @@ function renderRecipes() {
     let letter = '';
     for (const r of list) {
       const L1 = r.name.charAt(0).toUpperCase();
-      if (!q && !nOn && L1 !== letter) { letter = L1; html += `<div class="letter" aria-hidden="true">${esc(L1)}</div>`; }
-      const st = S.stats[r.id], needs = !r.cuisine || !r.meal_type, isHidden = r.library && S.hidden.has(r.id);
-      html += `<button class="item" data-act="details" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Starter</span>' : ''}</span>
-        <span class="tags">${isHidden ? 'Hidden from the dice' : needs ? '<span class="needs">Needs details</span>' : esc(tagLine(r))}</span></span>
-        <span class="times">${st && st.times ? st.times + '×' : 'New'}${r.ingredients.length ? '' : '<br><span style="font-size:12px">no ingredients</span>'}</span></button>`;
+      if (!q && !nOn && S.sort === 'az' && L1 !== letter) { letter = L1; html += `<div class="letter" aria-hidden="true">${esc(L1)}</div>`; }
+      const st = S.stats[r.id], needs = !r.cuisine || !r.meal_type, isHidden = r.library && S.hidden.has(r.id), link = safeUrl(r.link);
+      const sub = r._hits.length ? `Has ${esc(r._hits.join(', '))}` : isHidden ? 'Hidden from the dice' : needs ? '<span class="needs">Needs details</span>' : esc(tagLine(r));
+      const right = S.sort === 'recent' || S.sort === 'lately' ? (st && st.last ? L.nice(st.last) : 'Never') : (st && st.times ? st.times + '×' : 'New');
+      html += `<div class="row"><button class="item" data-act="details" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Starter</span>' : ''}</span>
+        <span class="tags">${sub}</span></span><span class="times">${right}</span></button>${link ? `<a class="linkicon" href="${esc(link)}" target="_blank" rel="noopener" aria-label="Open the ${esc(r.name)} recipe page">${EXTERNAL}</a>` : ''}</div>`;
     }
     html += '</div>';
   }
   if (hiddenCount) html += `<button class="textlink" data-act="togglehidden">${S.showHidden ? 'Hide' : 'Show'} ${hiddenCount} hidden starter ${hiddenCount === 1 ? 'recipe' : 'recipes'}</button>`;
   app.innerHTML = html;
+  document.getElementById('sortSel').addEventListener('change', (e) => { S.sort = e.target.value; remember('sort', S.sort); renderRecipes(); });
   const input = document.getElementById('q');
   input.addEventListener('input', () => {
     S.query = input.value; const pos = input.selectionStart; renderRecipes();
@@ -392,7 +421,7 @@ function renderRecipes() {
 function canEdit(r) { return r && (!r.library || S.isAdmin); }
 
 function ingredientLine(g) {
-  const amt = [g.quantity != null ? L.formatQty(g.quantity) : '', g.unit || ''].filter(Boolean).join(' ');
+  const amt = [g.quantity != null ? L.formatQty(g.quantity) : '', L.unitLabel(g.quantity, g.unit)].filter(Boolean).join(' ');
   return { amt, text: g.item + (g.note ? `, ${g.note}` : '') };
 }
 
@@ -404,8 +433,10 @@ function details(id) {
     <h2>${esc(r.name)}${r.library ? '<span class="badge">Starter</span>' : ''}</h2>
     <div class="meta">${esc(tagLine(r) || 'No details yet')}<br>${L.agoText(st.last, S.today)}${st.times ? `, ${st.times} ${st.times === 1 ? 'time' : 'times'} so far` : ''}${r.servings ? `. Serves ${r.servings}` : ''}</div>
     ${r.notes ? `<p style="margin:0 0 12px">${esc(r.notes)}</p>` : ''}
-    ${r.ingredients.length ? `<ul class="inglist">${r.ingredients.map((g) => { const l = ingredientLine(g); return `<li>${l.amt ? `<span class="q">${esc(l.amt)}</span> ` : ''}${esc(l.text)}</li>`; }).join('')}</ul>` : ''}
-    ${safeUrl(r.link) ? `<a class="linkbtn" style="margin:0 0 6px" href="${esc(safeUrl(r.link))}" target="_blank" rel="noopener">Open the recipe</a>` : ''}
+    ${r.ingredients.length ? `<h3 class="subhead">Ingredients</h3><ul class="inglist">${r.ingredients.map((g) => { const l = ingredientLine(g); return `<li>${l.amt ? `<span class="q">${esc(l.amt)}</span> ` : ''}${esc(l.text)}</li>`; }).join('')}</ul>` : ''}
+    ${r.directions && r.directions.length ? `<h3 class="subhead">Steps</h3><ol class="steps">${r.directions.map((d) => `<li>${esc(d)}</li>`).join('')}</ol>` : ''}
+    ${safeUrl(r.link) ? `<a class="btn soft linkout wide" href="${esc(safeUrl(r.link))}" target="_blank" rel="noopener">Open the recipe page ${EXTERNAL}</a>` : ''}
+    ${r.source ? `<p class="source">From ${esc(r.source)}</p>` : ''}
     <div class="menu">
       <button class="btn primary" data-act="addto" data-id="${r.id}">Add to a day</button>
       ${canEdit(r) ? `<button class="btn soft" data-act="edit" data-id="${r.id}">Edit${r.ingredients.length ? '' : ' and add ingredients'}</button>` : ''}
@@ -440,8 +471,9 @@ function editor(id, opts = {}) {
     ${selectField('fCuisine', 'Cuisine', 'cuisine', r.cuisine)}${selectField('fProtein', 'Protein', 'protein', r.protein)}${selectField('fType', 'Kind of meal', 'meal_type', r.meal_type)}
     <div class="field"><label>Healthy?</label><div class="seg" id="fHealthy"><button type="button" data-v="yes" aria-pressed="${r.healthy === true}">Yes</button><button type="button" data-v="no" aria-pressed="${r.healthy === false}">No</button></div></div>
     <div class="field"><label for="fIng">Ingredients</label><div class="help">One per line, like “1 lb ground turkey”. These build your shopping list.</div><textarea id="fIng" class="tall" placeholder="1 lb ground turkey&#10;1 onion, diced&#10;2 cups rice">${esc(ingredientsText(r.ingredients))}</textarea></div>
+    <div class="field"><label for="fSteps">Steps</label><div class="help">One step per line (optional).</div><textarea id="fSteps" class="tall" placeholder="Brown the turkey&#10;Add the sauce and simmer 10 minutes">${esc((r.directions || []).join('\n'))}</textarea></div>
     <div class="field"><label for="fServ">Serves</label><input id="fServ" type="number" inputmode="numeric" min="1" max="50" value="${r.servings || ''}" placeholder="4"></div>
-    <div class="field"><label for="fLink">Recipe link</label><input id="fLink" type="url" inputmode="url" placeholder="Paste a link (optional)" value="${esc(r.link)}"></div>
+    <div class="field"><label for="fLink">Recipe link</label><div class="gorow"><input id="fLink" type="url" inputmode="url" placeholder="Paste a link (optional)" value="${esc(r.link)}" autocomplete="off"><a class="btn soft linkout${safeUrl(r.link) ? '' : ' hidden'}" id="fLinkOpen" href="${esc(safeUrl(r.link) || '#')}" target="_blank" rel="noopener">Open ${EXTERNAL}</a></div></div>
     <div class="field"><label for="fNotes">Notes</label><textarea id="fNotes" placeholder="Sides, tweaks, who loved it">${esc(r.notes)}</textarea></div>
     <input type="hidden" id="fImg" value="${esc(r.image_url || '')}">
     <button class="btn primary wide" id="fSave">${isNew ? 'Add recipe' : 'Save changes'}</button>`, (s) => {
@@ -456,6 +488,9 @@ function editor(id, opts = {}) {
       seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', 'false'));
       b.setAttribute('aria-pressed', String(on));
     });
+    const linkIn = s.querySelector('#fLink'), linkOpen = s.querySelector('#fLinkOpen');
+    const syncLink = () => { const u = safeUrl(linkIn.value); linkOpen.classList.toggle('hidden', !u); linkOpen.href = u || '#'; };
+    linkIn.addEventListener('input', syncLink);
     const val = (fid) => { const sel = s.querySelector('#' + fid); return sel.value === '__new' ? s.querySelector('#' + fid + 'New').value.trim() : sel.value; };
     const setSelect = (fid, v) => {
       if (!v) return;
@@ -472,7 +507,7 @@ function editor(id, opts = {}) {
       try {
         const d = await S.api.importRecipe(url);
         if (d.name && !s.querySelector('#fName').value.trim()) s.querySelector('#fName').value = d.name;
-        s.querySelector('#fLink').value = d.link || url;
+        s.querySelector('#fLink').value = d.link || url; syncLink();
         if (d.servings) s.querySelector('#fServ').value = d.servings;
         if (d.image) s.querySelector('#fImg').value = d.image;
         if (d.ingredients && d.ingredients.length) s.querySelector('#fIng').value = d.ingredients.join('\n');
@@ -493,6 +528,8 @@ function editor(id, opts = {}) {
         healthy: pressed ? pressed.dataset.v === 'yes' : null, link: s.querySelector('#fLink').value.trim(),
         notes: s.querySelector('#fNotes').value.trim(), servings: parseInt(s.querySelector('#fServ').value, 10) || null,
         image_url: s.querySelector('#fImg').value.trim(),
+        directions: s.querySelector('#fSteps').value.split('\n').map((x) => x.trim()).filter(Boolean),
+        source: isNew ? (opts.prefill && opts.prefill.source) || null : r.source || null,
       };
       const ingredients = s.querySelector('#fIng').value.split('\n').map(L.parseIngredient).filter(Boolean);
       if (!rec.name) { err.textContent = 'Give the recipe a name.'; err.classList.remove('hidden'); s.querySelector('.sheet').scrollTop = 0; return; }
@@ -504,7 +541,7 @@ function editor(id, opts = {}) {
         if (opts.copiedFrom) { S.hidden.add(opts.copiedFrom); S.api.setHidden(S.household.id, opts.copiedFrom, true).catch(() => {}); }
         S.query = '';
         closeSheet();
-        if (opts.forDay) { S.tab = 'week'; await changeDays([recipeChange(opts.forDay, saved)], opts.forDay); }
+        if (opts.forDay) { S.tab = 'week'; remember('tab', 'week'); await changeDays([recipeChange(opts.forDay, saved)], opts.forDay); }
         else render();
         toast(isNew ? (opts.copiedFrom ? 'Copied to your recipes' : 'Recipe added') : 'Changes saved');
       } catch (e) {
@@ -613,6 +650,8 @@ function settingsSheet() {
       <div class="copyrow"><input readonly value="${esc(S.api.calendarUrl(h.calendar_token))}" aria-label="Calendar link"><button class="btn primary small" data-act="copycal">Copy</button></div>
       <p style="margin-top:10px">iPhone: Settings › Calendar › Accounts › Add Account › Other › Add Subscribed Calendar, then paste.<br>Google Calendar (on a computer): Other calendars › + › From URL, then paste.</p>
       <button class="textlink" data-act="newcal">Make a new link (stops the old one working)</button></div>
+    ${S.isAdmin ? `<div class="setting"><h3>Starter recipes</h3><p>${S.recipes.filter((x) => x.library).length} starter recipes are in the app for every household. Add new ones from the recipe file that ships with the app.</p>
+      <button class="btn soft wide" data-act="syncstarter">Check for new starter recipes</button></div>` : ''}
     <div class="setting"><h3>Account</h3><p>Signed in as ${esc((S.session && S.session.user && S.session.user.email) || '')}.</p><button class="btn soft wide" data-act="signout">Sign out</button></div>`);
 }
 
@@ -633,17 +672,67 @@ function drawRuleSheet() {
 }
 
 // ---------- sheets, prompts, toasts ----------
+// Panels slide up from the bottom. Close with the X, a tap outside, a swipe down, Escape, or the phone's Back.
+function removeSheet() {
+  const s = document.getElementById('scrim');
+  if (s) s.remove();
+  document.documentElement.classList.remove('locked');
+}
 function openSheet(html, after) {
-  closeSheet();
+  const existing = document.getElementById('scrim');
+  if (existing) existing.remove();
+  else if (!S.sheetPushed) { try { history.pushState({ sheet: true }, ''); S.sheetPushed = true; } catch (_) { /* ignore */ } }
   const s = document.createElement('div');
   s.className = 'scrim'; s.id = 'scrim';
-  s.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div>`;
+  s.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="sheettop"><div class="grab"></div><button class="xbtn" data-act="closesheet" aria-label="Close">${CLOSE}</button></div>${html}</div>`;
   s.addEventListener('click', (e) => { if (e.target === s) closeSheet(); });
   document.body.appendChild(s);
+  document.documentElement.classList.add('locked');
+  enableSwipeDown(s.querySelector('.sheet'));
   if (after) after(s);
 }
-function closeSheet() { const s = document.getElementById('scrim'); if (s) s.remove(); }
+function closeSheet() {
+  if (!document.getElementById('scrim')) return;
+  removeSheet();
+  if (S.sheetPushed) { S.sheetPushed = false; S.ignorePop = true; try { history.back(); } catch (_) { S.ignorePop = false; } }
+}
+window.addEventListener('popstate', () => {
+  if (S.ignorePop) { S.ignorePop = false; return; }
+  S.sheetPushed = false;
+  removeSheet();
+});
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+
+function enableSwipeDown(sheet) {
+  let y0 = null, x0 = 0, dy = 0, t0 = 0, dragging = false;
+  sheet.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const fromTop = e.target.closest('.sheettop');
+    if (sheet.scrollTop > 0 && !fromTop) { y0 = null; return; }
+    if (e.target.closest('input, textarea, select, .chips')) { y0 = null; return; }
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; dy = 0; t0 = Date.now(); dragging = false;
+  }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => {
+    if (y0 == null) return;
+    const ny = e.touches[0].clientY - y0, nx = e.touches[0].clientX - x0;
+    if (!dragging) {
+      if (Math.abs(nx) > Math.abs(ny) || ny < 6) { if (ny < -4 || Math.abs(nx) > 8) y0 = null; return; }
+      dragging = true; sheet.style.transition = 'none';
+    }
+    dy = Math.max(0, ny);
+    sheet.style.transform = `translateY(${dy}px)`;
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+  sheet.addEventListener('touchend', () => {
+    if (y0 == null) return;
+    y0 = null;
+    if (!dragging) return;
+    const fast = dy / Math.max(1, Date.now() - t0) > 0.6;
+    sheet.style.transition = 'transform .2s ease-out';
+    if (dy > 120 || (fast && dy > 40)) { sheet.style.transform = 'translateY(100%)'; setTimeout(closeSheet, 180); }
+    else sheet.style.transform = '';
+  });
+}
 
 function ask(title, body, yes, onYes, danger = false) {
   openSheet(`<h2>${title}</h2><div class="meta">${body}</div><div class="menu"><button class="btn ${danger ? 'danger' : 'primary'}" id="askYes">${yes}</button><button class="btn soft" id="askNo">Never mind</button></div>`, (s) => {
@@ -663,7 +752,10 @@ function toast(msg) {
 // ---------- one click handler for everything ----------
 document.addEventListener('click', async (e) => {
   const tab = e.target.closest('nav.tabs button');
-  if (tab) { S.tab = tab.dataset.tab; closeSheet(); render(); window.scrollTo(0, 0); return; }
+  if (tab) {
+    if (tab.dataset.tab === S.tab && !document.getElementById('scrim')) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    S.tab = tab.dataset.tab; remember('tab', S.tab); closeSheet(); render(); window.scrollTo(0, 0); return;
+  }
   const b = e.target.closest('[data-act]');
   if (!b) return;
   const act = b.dataset.act, day = b.dataset.d, id = b.dataset.id;
@@ -671,7 +763,7 @@ document.addEventListener('click', async (e) => {
     case 'retry': loadHousehold(); break;
     case 'authmode': S.authMode = b.dataset.m; S.authMsg = null; renderAuth(); break;
     case 'signout': closeSheet(); await S.api.signOut(); S.household = null; S.session = null; renderAuth(); break;
-    case 'tab': S.tab = b.dataset.tab; render(); break;
+    case 'tab': S.tab = b.dataset.tab; remember('tab', S.tab); render(); window.scrollTo(0, 0); break;
 
     // week
     case 'prev': case 'next': S.weekStart = L.addDays(S.weekStart, act === 'prev' ? -7 : 7); render(); break;
@@ -691,7 +783,7 @@ document.addEventListener('click', async (e) => {
     case 'setday': {
       const r = byId(id); if (!r) return;
       closeSheet();
-      if (b.dataset.go) { S.tab = 'week'; toast(`${r.name} added to ${dayName(day)}`); }
+      if (b.dataset.go) { S.tab = 'week'; remember('tab', 'week'); toast(`${r.name} added to ${dayName(day)}`); }
       changeDays([recipeChange(day, r)], day);
       break;
     }
@@ -750,7 +842,30 @@ document.addEventListener('click', async (e) => {
       });
       break;
     }
+    case 'source': {
+      const ctx = b.dataset.ctx;
+      S.f[ctx].source = b.dataset.v;
+      if (ctx === 'surprise') S.pick = null;
+      keepChipScroll(() => { render(); if (ctx === 'dice') diceFilterSheet(); });
+      break;
+    }
     case 'togglefilters': S.showRecipeFilters = !S.showRecipeFilters; render(); break;
+    case 'syncstarter': {
+      b.disabled = true; b.textContent = 'Checking…';
+      try {
+        const file = await (await fetch('starter-recipes.json', { cache: 'no-store' })).json();
+        const have = new Set(S.recipes.filter((x) => x.library).map((x) => k(x.name)));
+        const missing = (file.recipes || []).filter((x) => x.name && !have.has(k(x.name)));
+        if (!missing.length) { b.disabled = false; b.textContent = 'Check for new starter recipes'; toast('Starter recipes are up to date'); break; }
+        ask(`Add ${missing.length} starter recipes?`, 'Every household will see them, marked Starter. Households can hide any they don’t want.', `Add ${missing.length} recipes`, async () => {
+          try {
+            await S.api.addLibraryRecipes(missing, (done, total) => toast(`Adding starter recipes… ${done} of ${total}`));
+            await loadData(); render(); toast(`Added ${missing.length} starter recipes`);
+          } catch (err) { toast(err.message); }
+        });
+      } catch (err) { b.disabled = false; b.textContent = 'Check for new starter recipes'; toast('Couldn’t read the recipe file. ' + (err.message || '')); }
+      break;
+    }
     case 'togglehidden': S.showHidden = !S.showHidden; render(); break;
 
     // surprise and recipes

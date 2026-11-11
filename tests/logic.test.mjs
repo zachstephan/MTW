@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   parseIngredient, itemKey, guessAisle, formatQty, buildShoppingList, shoppingText,
   weekOf, addDays, dow, pickRecipe, passes, blankFilter, recipeStats, agoText, ruleSummary,
+  searchTerms, matchRecipe, sortRecipes, activeCount,
 } from '../web/logic.js';
 
 test('parses common ingredient lines', () => {
@@ -129,4 +130,34 @@ test('filters and stats', () => {
   assert.equal(agoText('2026-11-04', '2026-11-09'), 'Made 5 days ago');
   assert.equal(ruleSummary({ action: 'eating_out' }), 'Eating out');
   assert.equal(ruleSummary({ action: 'filter', cuisines: ['Mexican'], proteins: [], meal_types: ['Bowl'] }), 'Mexican, Bowl');
+});
+
+test('search matches names and ingredients, all terms required', () => {
+  const r = { name: 'Taco Bowl', cuisine: 'Mexican', protein: 'Ground Turkey', meal_type: 'Bowl',
+    ingredients: [parseIngredient('1 lb ground turkey'), parseIngredient('1 cup rice'), parseIngredient('1 can black beans')] };
+  assert.deepEqual(searchTerms('Chicken, rice and beans'), ['chicken', 'rice', 'beans']);
+  assert.deepEqual(matchRecipe(r, searchTerms('taco')), { hits: [] });
+  assert.deepEqual(matchRecipe(r, searchTerms('rice, black beans')), { hits: ['rice', 'black beans'] });
+  assert.equal(matchRecipe(r, searchTerms('rice, salmon')), null);
+  assert.deepEqual(matchRecipe(r, searchTerms('mexican')), { hits: [] });
+  const v = { name: 'Stir Fry', ingredients: [parseIngredient('2 tbsp rice vinegar'), parseIngredient('2 cups rice')] };
+  assert.deepEqual(matchRecipe(v, ['rice']), { hits: ['rice'] });
+  assert.equal(matchRecipe({ name: 'x', ingredients: [parseIngredient('1 tsp licorice')] }, ['rice']), null);
+});
+
+test('sorts by times made, recency and name', () => {
+  const list = [{ id: 'a', name: 'B' }, { id: 'b', name: 'A' }, { id: 'c', name: 'C' }];
+  const stats = { a: { times: 5, last: '2026-01-01' }, c: { times: 2, last: '2026-11-01' } };
+  assert.deepEqual(sortRecipes(list, 'most', stats).map((r) => r.id), ['a', 'c', 'b']);
+  assert.deepEqual(sortRecipes(list, 'recent', stats).map((r) => r.id), ['c', 'a', 'b']);
+  assert.deepEqual(sortRecipes(list, 'lately', stats).map((r) => r.id), ['a', 'c', 'b']);
+  assert.deepEqual(sortRecipes(list, 'az', stats).map((r) => r.id), ['b', 'a', 'c']);
+});
+
+test('source filter splits our recipes from starter ones', () => {
+  const ours = { name: 'x', library: false }, lib = { name: 'y', library: true };
+  const f = { ...blankFilter(), source: 'ours' };
+  assert.ok(passes(ours, f) && !passes(lib, f));
+  assert.ok(passes(lib, { ...blankFilter(), source: 'starter' }));
+  assert.equal(activeCount(f), 1);
 });

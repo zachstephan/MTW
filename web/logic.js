@@ -200,12 +200,14 @@ function combineAmounts(amounts) {
   return { amounts: out, countless };
 }
 
+export function unitLabel(quantity, unit) {
+  if (!unit) return '';
+  const plural = quantity > 1 && ['cup', 'can', 'jar', 'package', 'bunch', 'head', 'slice', 'stalk', 'sprig', 'bag', 'box', 'stick', 'clove', 'pint', 'quart', 'pinch', 'dash'].includes(unit);
+  return plural ? (['box', 'bunch', 'pinch', 'dash'].includes(unit) ? unit + 'es' : unit + 's') : unit;
+}
 function amountText(a) {
   const q = formatQty(a.quantity);
-  if (!a.unit) return q;
-  const plural = a.quantity > 1 && ['cup', 'can', 'jar', 'package', 'bunch', 'head', 'slice', 'stalk', 'sprig', 'bag', 'box', 'stick', 'clove', 'pint', 'quart', 'pinch', 'dash'].includes(a.unit);
-  const u = plural ? (a.unit === 'box' || a.unit === 'bunch' || a.unit === 'pinch' || a.unit === 'dash' ? a.unit + 'es' : a.unit + 's') : a.unit;
-  return `${q} ${u}`;
+  return a.unit ? `${q} ${unitLabel(a.quantity, a.unit)}` : q;
 }
 
 // entries: [{ recipeName, ingredients: [{quantity, unit, item, aisle}] }]
@@ -249,12 +251,57 @@ export function shoppingText(groups, extras = [], checkedKeys = new Set(), title
 }
 
 // ---------- filters, rules and random picks ----------
-export function blankFilter() { return { cuisine: [], protein: [], meal_type: [], healthy: false }; }
-export function activeCount(f) { return f.cuisine.length + f.protein.length + f.meal_type.length + (f.healthy ? 1 : 0); }
+// source: 'all' | 'ours' (household recipes) | 'starter' (shared library)
+export function blankFilter() { return { cuisine: [], protein: [], meal_type: [], healthy: false, source: 'all' }; }
+export function activeCount(f) { return f.cuisine.length + f.protein.length + f.meal_type.length + (f.healthy ? 1 : 0) + (f.source && f.source !== 'all' ? 1 : 0); }
 export function passes(r, f) {
   if (!f) return true;
+  if (f.source === 'ours' && r.library) return false;
+  if (f.source === 'starter' && !r.library) return false;
   return (!f.cuisine.length || f.cuisine.includes(r.cuisine)) && (!f.protein.length || f.protein.includes(r.protein)) &&
     (!f.meal_type.length || f.meal_type.includes(r.meal_type)) && (!f.healthy || r.healthy === true);
+}
+
+// ---------- search and sort ----------
+// Terms are split on commas (and " and "), so "chicken, rice" finds recipes that have both.
+export function searchTerms(q) {
+  return String(q || '').toLowerCase().split(/,|\band\b|\+/).map((t) => t.trim()).filter(Boolean);
+}
+// Returns null when the recipe doesn't match, else { hits: [ingredient names matched only through ingredients] }.
+export function matchRecipe(r, terms) {
+  if (!terms.length) return { hits: [] };
+  const head = [r.name, r.cuisine, r.protein, r.meal_type].filter(Boolean).join(' ').toLowerCase();
+  const hits = [];
+  for (const t of terms) {
+    if (head.includes(t)) continue;
+    // Word-start match, preferring an ingredient that is mainly this thing ("rice" over "rice vinegar").
+    const re = new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const matches = (r.ingredients || []).filter((g) => re.test(g.item || '') || re.test(g.raw || ''));
+    if (!matches.length) return null;
+    const plain = new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(s|es)?$', 'i');
+    const ing = matches.find((g) => plain.test(String(g.item || '').trim())) || matches[0];
+    if (!hits.includes(ing.item)) hits.push(ing.item);
+  }
+  return { hits };
+}
+export const SORTS = { az: 'A to Z', most: 'Most made', recent: 'Recently made', lately: 'Not made lately', newest: 'Newest added' };
+export function sortRecipes(list, sort, stats = {}) {
+  const st = (r) => stats[r.id] || { times: 0, last: null };
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const arr = list.slice();
+  if (sort === 'most') return arr.sort((a, b) => st(b).times - st(a).times || byName(a, b));
+  if (sort === 'recent') return arr.sort((a, b) => (st(b).last || '').localeCompare(st(a).last || '') || byName(a, b));
+  if (sort === 'lately') {
+    // Made before, longest ago first; never-made recipes go last.
+    return arr.sort((a, b) => {
+      const la = st(a).last, lb = st(b).last;
+      if (!la && !lb) return byName(a, b);
+      if (!la) return 1; if (!lb) return -1;
+      return la.localeCompare(lb) || byName(a, b);
+    });
+  }
+  if (sort === 'newest') return arr.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) || byName(a, b));
+  return arr.sort(byName);
 }
 export function ruleToFilter(rule) {
   if (!rule || rule.action !== 'filter') return null;

@@ -18,6 +18,16 @@ function friendly(msg) {
   return msg;
 }
 
+// PostgREST returns at most 1000 rows per request; page through bigger tables.
+async function fetchAll(makeQuery) {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const rows = check(await makeQuery().range(from, from + 999));
+    out.push(...rows);
+    if (rows.length < 1000) return out;
+  }
+}
+
 export async function createApi() {
   if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('This copy of the app isn’t connected to a database yet (web/config.js is empty).');
   const { createClient } = await import(SUPABASE_JS);
@@ -61,15 +71,15 @@ export async function createApi() {
     // ---------- everything the screens need ----------
     async loadAll(hid) {
       const [recipes, plan, rules, hidden, admin] = await Promise.all([
-        sb.from('recipes').select('*, recipe_ingredients(*)').order('name'),
-        sb.from('plan_days').select('*').eq('household_id', hid),
+        fetchAll(() => sb.from('recipes').select('*, recipe_ingredients(*)').order('name').order('id')),
+        fetchAll(() => sb.from('plan_days').select('*').eq('household_id', hid).order('day')),
         sb.from('day_rules').select('*').eq('household_id', hid),
         sb.from('hidden_recipes').select('recipe_id').eq('household_id', hid),
         sb.from('app_admins').select('user_id'),
       ]);
       return {
-        recipes: check(recipes).map(normalizeRecipe),
-        plan: check(plan),
+        recipes: recipes.map(normalizeRecipe),
+        plan,
         rules: check(rules),
         hidden: check(hidden).map((r) => r.recipe_id),
         isAdmin: (admin.data || []).length > 0,
@@ -96,6 +106,7 @@ export async function createApi() {
         name: recipe.name, cuisine: recipe.cuisine || null, protein: recipe.protein || null, meal_type: recipe.meal_type || null,
         healthy: recipe.healthy == null ? null : !!recipe.healthy, link: recipe.link || null, notes: recipe.notes || null,
         servings: recipe.servings || null, image_url: recipe.image_url || null,
+        directions: (recipe.directions || []).filter(Boolean), source: recipe.source || null,
       };
       let saved;
       if (recipe.id) {
@@ -116,6 +127,26 @@ export async function createApi() {
     async setHidden(hid, recipeId, hide) {
       if (hide) check(await sb.from('hidden_recipes').upsert({ household_id: hid, recipe_id: recipeId }));
       else check(await sb.from('hidden_recipes').delete().eq('household_id', hid).eq('recipe_id', recipeId));
+    },
+    // Admins only (enforced by row-level security): add starter-library recipes in batches.
+    async addLibraryRecipes(list, onProgress) {
+      let done = 0;
+      for (let i = 0; i < list.length; i += 40) {
+        const batch = list.slice(i, i + 40);
+        const rows = check(await sb.from('recipes').insert(batch.map((r) => ({
+          household_id: null, name: r.name, cuisine: r.cuisine || null, protein: r.protein || null, meal_type: r.meal_type || null,
+          healthy: r.healthy == null ? null : !!r.healthy, link: r.link || null, notes: r.notes || null, servings: r.servings || null,
+          directions: r.directions || [], source: r.source || null,
+        }))).select('id, name'));
+        const idByName = new Map(rows.map((x) => [x.name.toLowerCase(), x.id]));
+        const ings = batch.flatMap((r) => (r.ingredients || []).map((g, pos) => ({
+          recipe_id: idByName.get(r.name.toLowerCase()), position: pos, quantity: g.quantity, unit: g.unit, item: g.item, note: g.note, aisle: g.aisle, raw: g.raw,
+        }))).filter((g) => g.recipe_id);
+        for (let j = 0; j < ings.length; j += 500) check(await sb.from('recipe_ingredients').insert(ings.slice(j, j + 500)));
+        done += batch.length;
+        if (onProgress) onProgress(done, list.length);
+      }
+      return done;
     },
     async importRecipe(url) {
       const { data, error } = await sb.functions.invoke('import-recipe', { body: { url } });
@@ -160,5 +191,5 @@ function normalizeRecipe(r) {
   const ingredients = (r.recipe_ingredients || []).slice().sort((a, b) => a.position - b.position)
     .map((g) => ({ quantity: g.quantity == null ? null : Number(g.quantity), unit: g.unit, item: g.item, note: g.note, aisle: g.aisle, raw: g.raw }));
   const { recipe_ingredients, ...rest } = r;
-  return { ...rest, library: r.household_id == null, ingredients };
+  return { ...rest, directions: r.directions || [], library: r.household_id == null, ingredients };
 }
