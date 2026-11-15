@@ -269,3 +269,9 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; text
 /* "Add … as a new recipe" rows */
 .item.addnew .name { color: var(--leaf); }
 .item.addnew { background: #EEF4EA; }
+
+/* Onboarding choice */
+.choice { display: block; width: 100%; text-align: left; background: var(--surface); border: 1.5px solid var(--line); border-radius: var(--r-lg); padding: 18px; margin-bottom: 12px; }
+.choice .t { display: block; font-family: var(--serif); font-size: 23px; color: var(--ink); margin-bottom: 4px; }
+.choice .d { display: block; color: var(--muted); font-size: 15px; line-height: 1.4; }
+.choice:active { border-color: var(--plum); }

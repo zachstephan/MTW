@@ -129,6 +129,7 @@ function renderAuth() {
     <p class="lead">Plan the week in a few taps, roll the dice when you’re stuck, and get the shopping list made for you.</p>
     <form class="card" id="authForm" novalidate>
       <h2>${title}</h2>
+      ${m === 'signup' ? '<p class="help" style="margin:-6px 0 14px">Next, you’ll start a new household or join one with a code.</p>' : ''}
       ${S.authMsg ? `<p class="${S.authMsg.ok ? 'ok' : 'err'}">${esc(S.authMsg.text)}</p>` : ''}
       <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" inputmode="email" required></div>
       ${m !== 'reset' ? `<div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="${m === 'signup' ? 'new-password' : 'current-password'}" minlength="6" required>${m === 'signup' ? '<div class="help" style="margin-top:6px">At least 6 characters.</div>' : ''}</div>` : ''}
@@ -173,22 +174,45 @@ function newPasswordSheet() {
 }
 
 // ---------- first-time setup ----------
+// After sign-up: choose to start a household or join one, then show just that form.
 function renderOnboarding() {
+  const mode = S.onboardMode;
+  const back = '<button class="textlink" data-act="onboard" data-m="">Back</button>';
+  let body;
+  if (mode === 'start') {
+    body = `<div class="card"><h2>Start a new household</h2><p class="err hidden" id="cErr"></p>
+      <div class="field"><label for="hname">Household name</label><input id="hname" placeholder="Like The Smiths" autocomplete="off" autocapitalize="words" enterkeyhint="go"></div>
+      <button class="btn primary wide" id="createH">Start household</button>
+      <p class="help" style="margin:12px 0 0">You’ll get a code to share so everyone at home can join.</p></div>${back}`;
+  } else if (mode === 'join') {
+    body = `<div class="card"><h2>Join a household</h2><p class="err hidden" id="jErr"></p>
+      <div class="field"><label for="hcode">Invite code</label><div class="help">Ask whoever set it up. It’s in their Settings, under “Share with your household”.</div><input id="hcode" placeholder="6 letters" autocomplete="off" autocapitalize="characters" maxlength="6" enterkeyhint="go" style="text-transform:uppercase;letter-spacing:.15em"></div>
+      <button class="btn primary wide" id="joinH">Join household</button></div>${back}`;
+  } else {
+    body = `<button class="choice" data-act="onboard" data-m="start"><span class="t">Start a new household</span><span class="d">You’re the first one here. Set it up and invite everyone at home.</span></button>
+      <button class="choice" data-act="onboard" data-m="join"><span class="t">Join a household</span><span class="d">Someone at home already set it up and gave you a code.</span></button>`;
+  }
   app.innerHTML = `<div class="welcome"><h1>Set up your kitchen</h1>
     <p class="lead">Everyone in a household shares the same recipes, week plan and shopping list.</p>
-    <div class="card"><h2>Start a new household</h2><p class="err hidden" id="cErr"></p>
-      <div class="field"><label for="hname">Household name</label><input id="hname" placeholder="The Stephans" autocomplete="off"></div>
-      <button class="btn primary wide" id="createH">Start household</button></div>
-    <div class="card"><h2>Join your partner’s</h2><p class="err hidden" id="jErr"></p>
-      <div class="field"><label for="hcode">Invite code</label><div class="help">They’ll find it in Settings, under “Share with your household”.</div><input id="hcode" placeholder="6 letters" autocomplete="off" autocapitalize="characters" maxlength="6" style="text-transform:uppercase;letter-spacing:.15em"></div>
-      <button class="btn soft wide" id="joinH">Join household</button></div>
+    ${body}
     <button class="textlink" data-act="signout">Sign out</button></div>`;
   const run = async (btn, errEl, fn) => {
     btn.disabled = true;
-    try { await fn(); await loadHousehold(); } catch (e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); btn.disabled = false; }
+    try { await fn(); S.onboardMode = null; await loadHousehold(); } catch (e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); btn.disabled = false; }
   };
-  document.getElementById('createH').addEventListener('click', (e) => run(e.currentTarget, document.getElementById('cErr'), () => S.api.createHousehold(document.getElementById('hname').value)));
-  document.getElementById('joinH').addEventListener('click', (e) => run(e.currentTarget, document.getElementById('jErr'), () => S.api.joinHousehold(document.getElementById('hcode').value)));
+  const hname = document.getElementById('hname'), hcode = document.getElementById('hcode');
+  if (hname) {
+    const go = () => run(document.getElementById('createH'), document.getElementById('cErr'), () => S.api.createHousehold(hname.value));
+    document.getElementById('createH').addEventListener('click', go);
+    hname.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    hname.focus({ preventScroll: true });
+  }
+  if (hcode) {
+    const go = () => run(document.getElementById('joinH'), document.getElementById('jErr'), () => S.api.joinHousehold(hcode.value));
+    document.getElementById('joinH').addEventListener('click', go);
+    hcode.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    hcode.focus({ preventScroll: true });
+  }
 }
 
 // ---------- main render ----------
@@ -814,7 +838,7 @@ function settingsSheet() {
       ${order.map((w) => { const r = S.rules.get(w); return `<button class="item" data-act="rule" data-w="${w}"><span class="name">${L.DAYS[w]}</span><span class="times" style="color:${r ? 'var(--plum)' : 'var(--muted)'};font-weight:${r ? 650 : 400}">${esc(L.ruleSummary(r))}</span></button>`; }).join('')}</div></div>
     <div class="setting"><h3>Jump to a week</h3><div class="gorow"><input type="date" id="goDate" value="${S.weekStart}" aria-label="Date"><button class="btn primary" data-act="godate">Go</button></div>
       <button class="textlink" data-act="gotoday">Back to this week</button></div>
-    <div class="setting"><h3>Share with your household</h3><p>Your partner signs up, chooses “Join your partner’s”, and enters this code.</p>
+    <div class="setting"><h3>Share with your household</h3><p>Anyone at home can join: they sign up, choose “Join a household”, and enter this code.</p>
       <div class="copyrow"><span class="code" id="invite">${esc(h.invite_code)}</span><button class="btn soft small" data-act="copycode">Copy</button><button class="btn soft small" data-act="newcode">New code</button></div></div>
     <div class="setting"><h3>Dinners in your calendar</h3><p>Subscribe once and the week’s dinners show up in your phone’s calendar, updated automatically.</p>
       <div class="copyrow"><input readonly value="${esc(S.api.calendarUrl(h.calendar_token))}" aria-label="Calendar link"><button class="btn primary small" data-act="copycal">Copy</button></div>
@@ -941,7 +965,8 @@ document.addEventListener('click', async (e) => {
   switch (act) {
     case 'retry': loadHousehold(); break;
     case 'authmode': S.authMode = b.dataset.m; S.authMsg = null; renderAuth(); break;
-    case 'signout': closeSheet(); await S.api.signOut(); S.household = null; S.session = null; renderAuth(); break;
+    case 'onboard': S.onboardMode = b.dataset.m || null; renderOnboarding(); break;
+    case 'signout': closeSheet(); await S.api.signOut(); S.household = null; S.session = null; S.onboardMode = null; renderAuth(); break;
     case 'tab': S.tab = b.dataset.tab; remember('tab', S.tab); render(); window.scrollTo(0, 0); break;
 
     // week

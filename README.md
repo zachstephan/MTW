@@ -21,7 +21,7 @@ Supabase project: `nrflpcnvbimunhmpxnsm` in the **Meal Tracker Week** organizati
 
 1. **Host `web/`.** In Cloudflare Pages (or Vercel or Netlify), connect this GitHub repo. Leave the build command empty and set the output directory to `web`. Every push to `main` then redeploys by itself.
 2. **Tell Supabase where the app lives.** In the Supabase dashboard, open Authentication › URL Configuration. Set **Site URL** to the hosted address (e.g. `https://mtw.pages.dev`) and add the same address under **Redirect URLs**. Sign-up confirmation and password-reset emails link there.
-3. **Sign up in the app**, choose **Join your partner's**, and enter the household invite code (Settings › Share with your household). Your recipes and history are already loaded into "The Stephans".
+3. **Sign up in the app**, choose **Join a household**, and enter the household invite code (Settings › Share with your household). Your recipes and history are already loaded into "The Stephans".
 4. **Optional: Recipe Bank editor.** To let an account add Recipe Bank recipes everyone sees, run in the SQL editor:
    `insert into public.app_admins (user_id) select id from auth.users where email = 'you@example.com';`
 
