@@ -393,7 +393,7 @@ function chooser(day, mode = 'dinner') {
     : mode === 'extra' ? 'A side, dessert or second dish. Search, or type a new name.' : 'Search by name or ingredients, or add something new.';
   const pickAct = mode === 'dinner' ? 'setday' : 'pickextra';
   openSheet(`<h2>${esc(title)}</h2><div class="meta">${meta}</div>
-    <div class="field"><input type="search" id="pq" placeholder="Recipe or ingredients, like chicken, rice" aria-label="Search recipes or ingredients" autocomplete="off"></div><div class="pick-list" id="pl"></div>`, (s) => {
+    <div class="field"><input type="search" id="pq" placeholder="Recipe or ingredients, like chicken, rice" aria-label="Search recipes or ingredients" autocomplete="off" autocapitalize="words" enterkeyhint="go"></div><div class="pick-list" id="pl"></div>`, (s) => {
     const input = s.querySelector('#pq'), pl = s.querySelector('#pl');
     const draw = () => {
       const q = k(input.value), terms = L.searchTerms(q);
@@ -404,11 +404,20 @@ function chooser(day, mode = 'dinner') {
         if (found.length >= 80) break;
       }
       const exact = found.some(({ r }) => k(r.name) === q);
-      let out = found.map(({ r, m }) => `<button class="item" data-act="${pickAct}" data-d="${day || ''}" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Recipe Bank</span>' : ''}</span><span class="tags">${m.hits.length ? 'Has ' + esc(m.hits.join(', ')) : esc(L.agoText((S.stats[r.id] || {}).last, S.today))}</span></span></button>`).join('');
-      if (q && !exact) out += `<button class="item" data-act="newforday" data-d="${day || ''}" data-mode="${mode}" data-name="${esc(input.value.trim())}"><span><span class="name">Add “${esc(input.value.trim())}” as a new recipe</span><span class="tags">You can fill in the details now or later</span></span></button>`;
+      const typed = input.value.trim();
+      const addNew = q && !exact ? `<button class="item addnew" data-act="newforday" data-d="${day || ''}" data-mode="${mode}" data-name="${esc(typed)}"><span><span class="name">Add “${esc(typed)}” as a new recipe</span><span class="tags">Fill in the details now or later</span></span></button>` : '';
+      let out = addNew + found.map(({ r, m }) => `<button class="item" data-act="${pickAct}" data-d="${day || ''}" data-id="${r.id}"><span><span class="name">${esc(r.name)}${r.library ? '<span class="badge">Recipe Bank</span>' : ''}</span><span class="tags">${m.hits.length ? 'Has ' + esc(m.hits.join(', ')) : esc(L.agoText((S.stats[r.id] || {}).last, S.today))}</span></span></button>`).join('');
       pl.innerHTML = out || '<div class="item">No recipes yet. Type a name to add one.</div>';
     };
     input.addEventListener('input', draw); draw();
+    // Return on the keyboard: take the exact match, or start a new recipe with what was typed.
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || !input.value.trim()) return;
+      e.preventDefault();
+      const exactBtn = [...pl.querySelectorAll('[data-id]')].find((b) => k(b.querySelector('.name').firstChild.textContent) === k(input.value));
+      (exactBtn || pl.querySelector('.addnew') || pl.querySelector('[data-id]'))?.click();
+    });
+    input.focus({ preventScroll: true });
   });
 }
 
@@ -491,7 +500,7 @@ function addToDaySheet(id) {
 }
 
 // ---------- Recipes ----------
-function renderRecipes() {
+function recipeMatches() {
   const q = k(S.query), terms = L.searchTerms(q), rf = S.f.recipes, nOn = L.activeCount(rf);
   const all = visibleRecipes(S.showHidden);
   const list = [];
@@ -500,19 +509,22 @@ function renderRecipes() {
     const m = L.matchRecipe(r, terms);
     if (m) list.push({ ...r, _hits: m.hits });
   }
-  const hiddenCount = S.recipes.filter((r) => r.library && S.hidden.has(r.id)).length;
-  let html = `<div class="top"><div><h1>Recipes</h1><div class="sub">${nOn || q ? `${list.length} of ${all.length} shown` : `${all.length} in your box`}</div></div>
-      <button class="btn primary small" data-act="new">Add</button></div>
-    <div class="search"><input type="search" id="q" placeholder="Recipe or ingredients, like chicken, rice" value="${esc(S.query)}" aria-label="Search recipes or ingredients" autocomplete="off" enterkeyhint="search">
-      <button class="btn soft filterbtn${nOn || S.showRecipeFilters ? ' on' : ''}" data-act="togglefilters" aria-expanded="${S.showRecipeFilters}">${nOn ? `Filters (${nOn})` : 'Filter'}</button></div>
-    <div class="sortrow"><label for="sortSel">Sort</label><select id="sortSel">${Object.entries(L.SORTS).map(([v, label]) => `<option value="${v}"${v === S.sort ? ' selected' : ''}>${label}</option>`).join('')}</select></div>
-    ${S.showRecipeFilters ? filterPanel('recipes', 'inpage') + (nOn ? '<button class="btn soft wide" data-act="clearfilters" data-ctx="recipes" style="margin:-4px 0 14px">Clear filters</button>' : '') : ''}`;
+  return { q, nOn, all, list, sub: nOn || q ? `${list.length} of ${all.length} shown` : `${all.length} in your box` };
+}
+
+// The results list on its own, so typing in search redraws only this and the keyboard stays up.
+function recipeListHtml({ q, nOn, list }) {
+  const typed = S.query.trim();
+  const exact = q && list.some((r) => k(r.name) === q);
+  const addRow = typed && !exact ? `<div class="row"><button class="item addnew" data-act="new" data-name="${esc(typed)}"><span><span class="name">Add “${esc(typed)}” as a new recipe</span><span class="tags">Fill in the details now or later</span></span></button></div>` : '';
+  const clearBtn = '<div style="margin-top:12px"><button class="btn soft" data-act="clearfilters" data-ctx="recipes">Clear filters</button></div>';
+  let html = '';
   if (!list.length) {
-    html += nOn && !q
-      ? '<div class="list"><div class="item" style="display:block">No recipes match these filters.<div style="margin-top:12px"><button class="btn soft" data-act="clearfilters" data-ctx="recipes">Clear filters</button></div></div></div>'
-      : `<div class="list"><div class="item" style="display:block">${q ? `No recipe called “${esc(S.query)}” yet.` : 'No recipes yet.'}<div style="margin-top:12px"><button class="btn primary" data-act="new">Add ${q ? 'it' : 'one'}</button></div></div></div>`;
+    if (nOn && !q) html = `<div class="list"><div class="item" style="display:block">No recipes match these filters.${clearBtn}</div></div>`;
+    else if (q) html = `<div class="list">${addRow}${nOn ? `<div class="item" style="display:block">Nothing else matches with these filters on.${clearBtn}</div>` : ''}</div>`;
+    else html = '<div class="list"><div class="item" style="display:block">No recipes yet.<div style="margin-top:12px"><button class="btn primary" data-act="new">Add one</button></div></div></div>';
   } else {
-    html += '<div class="list">';
+    html = '<div class="list">' + addRow;
     let letter = '';
     for (const r of list) {
       const L1 = r.name.charAt(0).toUpperCase();
@@ -525,13 +537,27 @@ function renderRecipes() {
     }
     html += '</div>';
   }
+  const hiddenCount = S.recipes.filter((r) => r.library && S.hidden.has(r.id)).length;
   if (hiddenCount) html += `<button class="textlink" data-act="togglehidden">${S.showHidden ? 'Hide' : 'Show'} ${hiddenCount} hidden Recipe Bank ${hiddenCount === 1 ? 'recipe' : 'recipes'}</button>`;
-  app.innerHTML = html;
+  return html;
+}
+
+function renderRecipes() {
+  const m = recipeMatches(), nOn = m.nOn;
+  app.innerHTML = `<div class="top"><div><h1>Recipes</h1><div class="sub" id="rsub">${m.sub}</div></div>
+      <button class="btn primary small" data-act="new">Add</button></div>
+    <div class="search"><input type="search" id="q" placeholder="Recipe or ingredients, like chicken, rice" value="${esc(S.query)}" aria-label="Search recipes or ingredients" autocomplete="off" enterkeyhint="search">
+      <button class="btn soft filterbtn${nOn || S.showRecipeFilters ? ' on' : ''}" data-act="togglefilters" aria-expanded="${S.showRecipeFilters}">${nOn ? `Filters (${nOn})` : 'Filter'}</button></div>
+    <div class="sortrow"><label for="sortSel">Sort</label><select id="sortSel">${Object.entries(L.SORTS).map(([v, label]) => `<option value="${v}"${v === S.sort ? ' selected' : ''}>${label}</option>`).join('')}</select></div>
+    ${S.showRecipeFilters ? filterPanel('recipes', 'inpage') + (nOn ? '<button class="btn soft wide" data-act="clearfilters" data-ctx="recipes" style="margin:-4px 0 14px">Clear filters</button>' : '') : ''}
+    <div id="rlist">${recipeListHtml(m)}</div>`;
   document.getElementById('sortSel').addEventListener('change', (e) => { S.sort = e.target.value; remember('sort', S.sort); renderRecipes(); });
   const input = document.getElementById('q');
   input.addEventListener('input', () => {
-    S.query = input.value; const pos = input.selectionStart; renderRecipes();
-    const again = document.getElementById('q'); again.focus(); try { again.setSelectionRange(pos, pos); } catch (_) { /* ignore */ }
+    S.query = input.value;
+    const mm = recipeMatches();
+    document.getElementById('rsub').textContent = mm.sub;
+    document.getElementById('rlist').innerHTML = recipeListHtml(mm);
   });
 }
 
@@ -579,21 +605,26 @@ function ingredientsText(list) {
 function editor(id, opts = {}) {
   const r = id ? byId(id) : { name: opts.name || '', cuisine: '', protein: '', meal_type: '', healthy: null, link: '', notes: '', servings: null, image_url: '', ingredients: [], ...(opts.prefill || {}) };
   const isNew = !id;
-  openSheet(`<h2>${isNew ? 'Add a recipe' : 'Edit recipe'}</h2><div class="meta">Only the name is required.</div>
-    ${isNew ? `<div class="importbox"><div class="field" style="margin:0"><label for="fUrl">Have a link? Paste it and we’ll fill in what we can.</label>
-      <div class="gorow"><input id="fUrl" type="url" inputmode="url" placeholder="https://…" autocomplete="off"><button class="btn primary" id="fImport" type="button">Fill in</button></div>
-      <p class="err hidden" id="impErr" style="margin:8px 0 0"></p><p class="ok hidden" id="impOk" style="margin:8px 0 0"></p></div></div>` : ''}
+  // Steps, servings, healthy and notes fold away unless the recipe already has them.
+  const moreOpen = !isNew && ((r.directions || []).length || r.servings || r.notes || r.healthy !== null);
+  openSheet(`<h2>${isNew ? 'Add a recipe' : 'Edit recipe'}</h2>
     <p class="err hidden" id="err"></p>
-    <div class="field"><label for="fName">Name</label><input id="fName" value="${esc(r.name)}" autocomplete="off"></div>
-    ${selectField('fCuisine', 'Cuisine', 'cuisine', r.cuisine)}${selectField('fProtein', 'Protein', 'protein', r.protein)}${selectField('fType', 'Kind of meal', 'meal_type', r.meal_type)}
-    <div class="field"><label>Healthy?</label><div class="seg" id="fHealthy"><button type="button" data-v="yes" aria-pressed="${r.healthy === true}">Yes</button><button type="button" data-v="no" aria-pressed="${r.healthy === false}">No</button></div></div>
-    <div class="field"><label for="fIng">Ingredients</label><div class="help">One per line, like “1 lb ground turkey”. These build your shopping list.</div><textarea id="fIng" class="tall" placeholder="1 lb ground turkey&#10;1 onion, diced&#10;2 cups rice">${esc(ingredientsText(r.ingredients))}</textarea></div>
-    <div class="field"><label for="fSteps">Steps</label><div class="help">One step per line (optional).</div><textarea id="fSteps" class="tall" placeholder="Brown the turkey&#10;Add the sauce and simmer 10 minutes">${esc((r.directions || []).join('\n'))}</textarea></div>
-    <div class="field"><label for="fServ">Serves</label><input id="fServ" type="number" inputmode="numeric" min="1" max="50" value="${r.servings || ''}" placeholder="4"></div>
-    <div class="field"><label for="fLink">Recipe link</label><div class="gorow"><input id="fLink" type="url" inputmode="url" placeholder="Paste a link (optional)" value="${esc(r.link)}" autocomplete="off"><a class="btn soft linkout${safeUrl(r.link) ? '' : ' hidden'}" id="fLinkOpen" href="${esc(safeUrl(r.link) || '#')}" target="_blank" rel="noopener">Open ${EXTERNAL}</a></div></div>
-    <div class="field"><label for="fNotes">Notes</label><textarea id="fNotes" placeholder="Sides, tweaks, who loved it">${esc(r.notes)}</textarea></div>
+    <div class="field"><label for="fName">Name</label><input id="fName" value="${esc(r.name)}" autocomplete="off" autocapitalize="words" enterkeyhint="next" placeholder="Like Chicken Tortilla Soup"></div>
+    <div class="field"><label for="fLink">Recipe link <span class="opt">optional</span></label>
+      <div class="gorow"><input id="fLink" type="url" inputmode="url" placeholder="Paste a link to fill in the rest" value="${esc(r.link)}" autocomplete="off" enterkeyhint="go">
+        <button class="btn soft hidden" id="fImport" type="button">Fill in</button>
+        <a class="btn soft linkout${safeUrl(r.link) ? '' : ' hidden'}" id="fLinkOpen" href="${esc(safeUrl(r.link) || '#')}" target="_blank" rel="noopener" aria-label="Open the recipe page">${EXTERNAL}</a></div>
+      <p class="err hidden" id="impErr" style="margin:8px 0 0"></p><p class="ok hidden" id="impOk" style="margin:8px 0 0"></p></div>
+    ${selectField('fType', 'Kind of meal', 'meal_type', r.meal_type)}${selectField('fCuisine', 'Cuisine', 'cuisine', r.cuisine)}${selectField('fProtein', 'Protein', 'protein', r.protein)}
+    <div class="field"><label for="fIng">Ingredients <span class="opt">for the shopping list</span></label><textarea id="fIng" class="tall" placeholder="One per line, like&#10;1 lb ground turkey&#10;1 onion, diced&#10;2 cups rice">${esc(ingredientsText(r.ingredients))}</textarea></div>
+    <details class="more"${moreOpen ? ' open' : ''}><summary><span>More details</span><span class="opt">steps, serves, healthy, notes</span></summary>
+      <div class="field"><label for="fSteps">Steps</label><textarea id="fSteps" class="tall" placeholder="One step per line&#10;Brown the turkey&#10;Add the sauce and simmer 10 minutes">${esc((r.directions || []).join('\n'))}</textarea></div>
+      <div class="field"><label for="fServ">Serves</label><input id="fServ" type="number" inputmode="numeric" min="1" max="50" value="${r.servings || ''}" placeholder="4"></div>
+      <div class="field"><label>Healthy?</label><div class="seg" id="fHealthy"><button type="button" data-v="yes" aria-pressed="${r.healthy === true}">Yes</button><button type="button" data-v="no" aria-pressed="${r.healthy === false}">No</button></div></div>
+      <div class="field"><label for="fNotes">Notes</label><textarea id="fNotes" placeholder="Sides, tweaks, who loved it">${esc(r.notes)}</textarea></div>
+    </details>
     <input type="hidden" id="fImg" value="${esc(r.image_url || '')}">
-    <button class="btn primary wide" id="fSave">${isNew ? 'Add recipe' : 'Save changes'}</button>`, (s) => {
+    <div class="savebar"><button class="btn primary wide" id="fSave">${isNew ? 'Add recipe' : 'Save changes'}</button></div>`, (s) => {
     for (const fid of ['fCuisine', 'fProtein', 'fType']) {
       const sel = s.querySelector('#' + fid), extra = s.querySelector('#' + fid + 'New');
       sel.addEventListener('change', () => { extra.classList.toggle('hidden', sel.value !== '__new'); if (sel.value === '__new') extra.focus(); });
@@ -605,51 +636,66 @@ function editor(id, opts = {}) {
       seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', 'false'));
       b.setAttribute('aria-pressed', String(on));
     });
-    const linkIn = s.querySelector('#fLink'), linkOpen = s.querySelector('#fLinkOpen');
-    const syncLink = () => { const u = safeUrl(linkIn.value); linkOpen.classList.toggle('hidden', !u); linkOpen.href = u || '#'; };
+    const nameIn = s.querySelector('#fName'), linkIn = s.querySelector('#fLink'), linkOpen = s.querySelector('#fLinkOpen'), imp = s.querySelector('#fImport');
+    const ingIn = s.querySelector('#fIng');
+    let importedUrl = '';
+    // The Open button shows for a saved or imported link; Fill in shows for a new link that hasn't been read yet.
+    const syncLink = () => {
+      const u = safeUrl(linkIn.value.trim());
+      linkOpen.classList.toggle('hidden', !u); linkOpen.href = u || '#';
+      imp.classList.toggle('hidden', !u || u === importedUrl || u === safeUrl(r.link || ''));
+    };
     linkIn.addEventListener('input', syncLink);
     const val = (fid) => { const sel = s.querySelector('#' + fid); return sel.value === '__new' ? s.querySelector('#' + fid + 'New').value.trim() : sel.value; };
     const setSelect = (fid, v) => {
-      if (!v) return;
+      if (!v || s.querySelector('#' + fid).value) return;
       const sel = s.querySelector('#' + fid);
       const match = [...sel.options].find((o) => k(o.value) === k(v));
       if (match) sel.value = match.value; else { sel.value = '__new'; const x = s.querySelector('#' + fid + 'New'); x.classList.remove('hidden'); x.value = v; }
     };
-    const imp = s.querySelector('#fImport');
-    if (imp) imp.addEventListener('click', async () => {
-      const url = s.querySelector('#fUrl').value.trim(), err = s.querySelector('#impErr'), ok = s.querySelector('#impOk');
+    // Read the page and fill in only what's still empty, so nothing typed gets overwritten.
+    const runImport = async () => {
+      const url = linkIn.value.trim(), err = s.querySelector('#impErr'), ok = s.querySelector('#impOk');
       err.classList.add('hidden'); ok.classList.add('hidden');
       if (!safeUrl(url)) { err.textContent = 'Paste a full link that starts with https://'; err.classList.remove('hidden'); return; }
-      imp.disabled = true; imp.textContent = 'Reading…';
+      imp.classList.remove('hidden'); imp.disabled = true; imp.textContent = 'Reading…';
       try {
         const d = await S.api.importRecipe(url);
-        if (d.name && !s.querySelector('#fName').value.trim()) s.querySelector('#fName').value = d.name;
-        s.querySelector('#fLink').value = d.link || url; syncLink();
-        if (d.servings) s.querySelector('#fServ').value = d.servings;
-        if (d.image) s.querySelector('#fImg').value = d.image;
-        if (d.ingredients && d.ingredients.length) s.querySelector('#fIng').value = d.ingredients.join('\n');
+        importedUrl = safeUrl(url);
+        if (d.name && !nameIn.value.trim()) nameIn.value = d.name;
+        linkIn.value = d.link || url;
+        if (d.servings && !s.querySelector('#fServ').value) s.querySelector('#fServ').value = d.servings;
+        if (d.image && !s.querySelector('#fImg').value) s.querySelector('#fImg').value = d.image;
+        const filled = d.ingredients && d.ingredients.length && !ingIn.value.trim();
+        if (filled) ingIn.value = d.ingredients.join('\n');
         if (d.cuisine) setSelect('fCuisine', d.cuisine.split(',')[0].trim());
-        ok.textContent = d.found
-          ? `Filled in ${d.ingredients.length} ingredient${d.ingredients.length === 1 ? '' : 's'}. Check them, then pick a cuisine and kind of meal.`
-          : 'That page didn’t list its ingredients in a way we can read. The name and link are filled in; add ingredients by hand.';
+        ok.textContent = filled ? `Filled in ${d.ingredients.length} ingredient${d.ingredients.length === 1 ? '' : 's'}. Pick a kind of meal and you’re set.`
+          : d.found ? 'Read the page. Your ingredients were already filled in, so they were left as they are.'
+          : 'That page doesn’t list its ingredients in a way we can read. Add them by hand if you want them on the shopping list.';
         ok.classList.remove('hidden');
       } catch (e) { err.textContent = e.message; err.classList.remove('hidden'); }
-      imp.disabled = false; imp.textContent = 'Fill in';
-    });
+      imp.disabled = false; imp.textContent = 'Fill in'; syncLink();
+    };
+    imp.addEventListener('click', runImport);
+    linkIn.addEventListener('paste', () => setTimeout(() => { syncLink(); if (safeUrl(linkIn.value.trim())) runImport(); }, 0));
+    linkIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (!imp.classList.contains('hidden')) runImport(); else ingIn.focus(); } });
+    nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (linkIn.value ? ingIn : linkIn).focus(); } });
+    // Keep the keyboard up: a named new recipe goes straight to ingredients, an unnamed one to the name.
+    if (isNew) (nameIn.value.trim() ? ingIn : nameIn).focus({ preventScroll: true });
     s.querySelector('#fSave').addEventListener('click', async function () {
       const btn = this, err = s.querySelector('#err');
       const pressed = seg.querySelector('[aria-pressed="true"]');
       const rec = {
-        id: isNew ? undefined : r.id, name: s.querySelector('#fName').value.replace(/\s+/g, ' ').trim(),
+        id: isNew ? undefined : r.id, name: nameIn.value.replace(/\s+/g, ' ').trim(),
         cuisine: val('fCuisine'), protein: val('fProtein'), meal_type: val('fType'),
-        healthy: pressed ? pressed.dataset.v === 'yes' : null, link: s.querySelector('#fLink').value.trim(),
+        healthy: pressed ? pressed.dataset.v === 'yes' : null, link: linkIn.value.trim(),
         notes: s.querySelector('#fNotes').value.trim(), servings: parseInt(s.querySelector('#fServ').value, 10) || null,
         image_url: s.querySelector('#fImg').value.trim(),
         directions: s.querySelector('#fSteps').value.split('\n').map((x) => x.trim()).filter(Boolean),
         source: isNew ? (opts.prefill && opts.prefill.source) || null : r.source || null,
       };
-      const ingredients = s.querySelector('#fIng').value.split('\n').map(L.parseIngredient).filter(Boolean);
-      if (!rec.name) { err.textContent = 'Give the recipe a name.'; err.classList.remove('hidden'); s.querySelector('.sheet').scrollTop = 0; return; }
+      const ingredients = ingIn.value.split('\n').map(L.parseIngredient).filter(Boolean);
+      if (!rec.name) { err.textContent = 'Give the recipe a name.'; err.classList.remove('hidden'); s.querySelector('.sheet').scrollTop = 0; nameIn.focus(); return; }
       btn.disabled = true; btn.textContent = 'Saving…';
       try {
         const saved = await S.api.saveRecipe(S.household.id, rec, ingredients, { library: !isNew && r.library });
@@ -1023,7 +1069,7 @@ document.addEventListener('click', async (e) => {
     case 'addto': addToDaySheet(id); break;
     case 'details': details(id); break;
     case 'edit': editor(id); break;
-    case 'new': editor(null, { name: S.query }); break;
+    case 'new': editor(null, { name: b.dataset.name != null ? b.dataset.name : S.query.trim() }); break;
     case 'copy': {
       const r = byId(id); if (!r) return;
       editor(null, { prefill: { ...r, id: undefined, library: false }, copiedFrom: r.id });
